@@ -41,23 +41,13 @@ pkgs = c("dplyr", "tidyverse", "janitor", "sf"
          , "future", "furrr", "data.table","leaflet"
          , "jtools", "tidyr", "ggspatial", "raster"
          , "prettymapr", "viridis", "labelled"
-         , "writexl", "WDI", "wesanderson", "ggrepel",
-         "ggbreak", "nuts"
+         , "writexl", "WDI", "wesanderson", "ggrepel"
+         , "ggbreak", "nuts", "httr", "jsonlite", "tidyr"
+         ,"progressr", "future", "furrr", "future.apply"
+         , "ncdf4"
 )
 
 groundhog.library(pkgs, groundhog.day
-                  , ignore.deps =  "fs")
-
-
-## Runs the following --------
-
-#https://github.com/antaldaniel/eurostat_regional/blob/master/Rearrange-Regional-Data.md
-# Nuts R package: https://cran.r-project.org/web/packages/nuts/vignettes/nuts.html
-
-## Loading data --------
-require(nuts)
-
-
-
-
+                  #, ignore.deps =  "fs"
+                  )
 

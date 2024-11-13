@@ -19,32 +19,37 @@
 ##
 ## ---------------------------
 
-## Program Set-up ------------
-
-options(scipen = 100, digits = 4) # Prefer non-scientific notation
-
-## Load required packages ----
-
-library("here")
-library("groundhog")
-
-set.groundhog.folder(here("groundhog_library"))
-groundhog.day = "2024-04-25"
-#Dowloaded fromn https://github.com/CredibilityLab/groundhog
-
-pkgs = c("dplyr", "tidyverse", "janitor", "sf"
-         , "ggplot2","xfun", "remotes", "sp", "spdep"
-         , "foreach", "doParallel", "parallel", "progress"
-         , "doSNOW", "purrr", "patchwork"
-         , "haven", "openxlsx", "MASS", "reticulate"
-         , "future", "furrr", "data.table","leaflet"
-         , "jtools", "tidyr", "ggspatial", "raster"
-         , "prettymapr", "viridis", "labelled"
-         , "writexl", "WDI", "wesanderson", "ggrepel",
-         "ggbreak"
-)
-
-groundhog.library(pkgs, groundhog.day)
-
-
 ## Runs the following --------
+# 1. Downloads the data via API
+# 2. Performs data checks
+# 3. Exports data in CSV
+# 4. 
+
+## Loading data ----
+require(httr)
+require(jsonlite)
+require(dplyr)
+require(ggplot2)
+require(tidyr)
+require(here)
+require(progressr)
+require(future)
+require(furrr)
+require(future.apply)
+
+dir.create(here("Output", "climate_data"), recursive = TRUE)
+dir.create(here("Data", "raw_climate"), recursive = TRUE)
+
+source("climate_api.R")
+
+# Get data for all variables and scenarios
+
+# Simple test
+results <- test_parallel_api("FRA")
+
+# Or direct use with custom parameters
+results <- get_climate_data_batch_parallel(
+  geocode = "FRA",
+  variables = c("tas", "cdd65", "hdd65", "hd30", "hd35", "fd", "id", "r20mm"),
+  chunk_size = 3
+)
