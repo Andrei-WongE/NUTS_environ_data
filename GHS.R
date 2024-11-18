@@ -140,7 +140,6 @@ print(missing_values)
 
 
 # 2. Check population raster ----
-# Libraries ----
 require(httr)
 require(terra)
 require(tidyverse)
@@ -152,7 +151,7 @@ require(viridis)
 require(ggspatial)
 
 
-# Setup [With aide of Claude]----
+## Download all years, processs and store [With aide of Claude]-----
 dir.create(here("Data", "ghs", "raw"), recursive = TRUE, showWarnings = FALSE)
 dir.create(here("Data", "ghs", "plots"), recursive = TRUE, showWarnings = FALSE)
 
@@ -169,7 +168,7 @@ europe_proj <- vect(cbind(c(-11,32,32,-11), c(35,35,65,65)),
                     type = "polygons", 
                     crs = "EPSG:4326")
 
-# Functions ----
+# Functions
 download_year <- function(year) {
   file_name <- sprintf("GHS_POP_E%d_GLOBE_R2023A_54009_1000_V1_0.zip", year)
   url <- file.path(BASE_URL, 
@@ -200,7 +199,7 @@ download_year <- function(year) {
   })
 }
 
-# Main Execution ----
+# Main Execution
 tic.clearlog()
 tic("Complete Processing")
 
@@ -301,7 +300,7 @@ tic.log(format = TRUE) %>%
 
 
 
-# Examine structure and resolution------
+## Examine structure and resolution------
 
 analyze_population_data <- function(years) {
   
