@@ -1,0 +1,37 @@
+---
+title: "Technical_documentation_NUTS_enviro"
+author: "Andrei Wong Espejo"
+format: docx
+editor: visual
+---
+
+
+
+# Introduction:
+
+
+# Workflow:
+
+
+
+# Obtaining data
+
+```{r}
+
+```
+
+# Data cleaning and wrangling
+
+```{r}
+
+```
+
+
+# Data analysis and verification
+
+
+```{r}
+1 + 1
+```
+
+
