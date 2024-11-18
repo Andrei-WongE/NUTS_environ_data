@@ -41,6 +41,7 @@ dir.create(here("Output", "climate_data"), recursive = TRUE)
 dir.create(here("Data", "raw_climate"), recursive = TRUE)
 
 source("climate_api.R")
+source("Master_script.R")
 
 # Get data for all variables and scenarios
 

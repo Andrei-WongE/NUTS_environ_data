@@ -1,20 +1,69 @@
 ---
-title: "Technical_documentation_NUTS_enviro"
+title: "Technical documentation NUTS1&2 level environmental data"
 author: "Andrei Wong Espejo"
 format: docx
 editor: visual
 ---
 
+<!-- using quarto install extension quarto-monash/report -->
+<!-- using quarto install extension schochastics/academicons -->
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Prevent scientific notation
+options(scipen = 999)
+
+# Load required packages ----
+require(quartotemplate)
+
+
+```
+
+```{r Functions, include=FALSE}
+
+# Tells you how many missing values in each column.
+cc <- function(df) {
+  print(df %>% is.na() %>% colSums())
+}
+# Tells you the percentage of missing value in each column.
+cd <- function(df) {
+  print(df %>% is.na() %>% colMeans())
+}
+# Calculate percentage
+pct <- function(x) {
+  (x / lag(x) - 1) * 100
+}
+
+```
 
 
 # Introduction:
 
-
 # Workflow:
 
+Using the NUTS package we can:
 
+-   nuts_classify() detects the NUTS version(s) and level(s) of a data set. Its output can be directly fed into the two other functions.
+
+-   nuts_convert_version() converts your data to a desired NUTS version (2006, 2010, 2013, 2016, 2021). This transformation works in any direction.
+
+-   nuts_aggregate() aggregates data to some upper-level NUTS code, i.e., it transforms NUTS-3 data to the NUTS-2 or NUTS-1 level (but not vice versa).
+
+![](Figures/NUTS_workflow.png){.preview-image width="374" height="453"}
 
 # Obtaining data
+
+GHS (2023) 
+Epochs: c(1975, 1980, 1985, 1990, 1995, 2000, 2005, 2010, 2015, 2020, 2025, 2030)
+Resolution: 1km
+Coordinate System: Mollweide
+
+ERAS5 ()
+
+
+NUTS1&2 (2016)
+
 
 ```{r}
 
@@ -26,12 +75,8 @@ editor: visual
 
 ```
 
-
 # Data analysis and verification
-
 
 ```{r}
 1 + 1
 ```
-
-

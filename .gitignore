@@ -13,7 +13,7 @@
 # R Environment Variables
 .Renviron
 # Igniore folders
-/data/
+/Data/
 /.quarto/
 /src/
 /groundhog_library/

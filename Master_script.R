@@ -35,7 +35,7 @@ groundhog.day = "2024-04-25" #"2020-05-12"
 
 pkgs = c("dplyr", "tidyverse", "janitor", "sf"
          , "ggplot2","xfun", "remotes", "sp", "spdep"
-         , "foreach", "doParallel", "parallel", "progress"
+         , "foreach", "doParallel", "progress"
          , "doSNOW", "purrr", "patchwork"
          , "haven", "openxlsx", "MASS", "reticulate"
          , "future", "furrr", "data.table","leaflet"
@@ -44,7 +44,7 @@ pkgs = c("dplyr", "tidyverse", "janitor", "sf"
          , "writexl", "WDI", "wesanderson", "ggrepel"
          , "ggbreak", "nuts", "httr", "jsonlite", "tidyr"
          ,"progressr", "future", "furrr", "future.apply"
-         , "ncdf4"
+         , "ncdf4", "terra", "tidyterra", "tictoc"
 )
 
 groundhog.library(pkgs, groundhog.day

@@ -22,11 +22,14 @@
 ## Load required packages ----
 source("Master_script.R")
 
-
 ## Runs the following --------
+# 1. Load the NUTS data
+# 2. 
 
 # https://github.com/antaldaniel/eurostat_regional/blob/master/Rearrange-Regional-Data.md
 # Nuts R package: https://cran.r-project.org/web/packages/nuts/vignettes/nuts.html
+
+# Data is from https://ec.europa.eu/eurostat/web/gisco/geodata/statistical-units/territorial-units-statistics
 
 ## Loading data --------
 require(nuts)
