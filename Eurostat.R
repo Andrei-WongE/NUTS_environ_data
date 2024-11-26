@@ -268,3 +268,4 @@ create_population_database <- function() {
 
 # Execute the process
 results_eupop <- create_population_database()
+saveRDS(results_eupop, here("Data", "Eurostat", "results_eupop.rds"))
