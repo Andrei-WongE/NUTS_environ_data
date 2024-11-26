@@ -59,6 +59,16 @@ Epochs: c(1975, 1980, 1985, 1990, 1995, 2000, 2005, 2010, 2015, 2020, 2025, 2030
 Resolution: 1km
 Coordinate System: Mollweide
 
+The combined information result into a new layer (resolution 1Km) which disergards administrative boundaries, and represents the presence and density of population.
+In the GHS pop grid, the grid cell value represents the absolute number of inhabitants.
+
+Advantages of population grids, from https://academy.europa.eu/pluginfile.php/17898/mod_scorm/intro/mod4-large.mp4?time=1656319630211 
+Do not depend on the shape and size of census units
+Do not depend on the boundary of census units
+Grid cells have the same size and are stable over time
+Grids integrate easily with other data
+Grid cells can be assembled into custom zones
+
 ERAS5 ()
 
 
@@ -70,6 +80,21 @@ NUTS1&2 (2016)
 ```
 
 # Data cleaning and wrangling
+
+The spatial analysis operations to perform are:
+- Aggregation: change of scale of the information, from 1km GHS population grid to 25km ERAS5 grid/cmip6-x0.25 grid. This means the reprojection of population grids maintaining volumes and minimising displacement of population.
+
+- Zonal statistics:Summary of rasters by zones, at the NUTS1&2 regions.
+
+_ Warping:  Changing the coordinate system of grids storing population counts is typically a challenging task, due to the need to keep the population totals unchanged (i.e. volume preservation). One critical aspect of population grids is that they represent a given spatial distribution and volume of people (i.e. total number of persons) for the area being represented. This volume (e.g. the population of a country in a given year) should not suffer significant changes when converting such a grid from the coordinate system in which it is produced to another coordinate system. From: ghs-popwarp_user_guide_online.pdf
+
+Currently the number of population grid products with large territorial coverage is increasing, but each of the
+products has different assumptions, technical specifications (Leyk et al. 2019) and therefore different fitness
+for use. Population grids differ in population concepts, methods for production, spatial and temporal
+resolution, temporal coverage, distribution policy and also spatial reference (coordinate system).
+
+Operation: GHS 1km grid using Mollewiede projection to ERAS5 25km grid using WGS84 projection.
+
 
 ```{r}
 

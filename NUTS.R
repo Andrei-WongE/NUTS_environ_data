@@ -67,5 +67,5 @@ nuts2 <- nuts[nuts$LEVL_CODE == 2,]
 nuts1 <- project(nuts1, "EPSG:3035") 
 nuts2 <- project(nuts2, "EPSG:3035")
 
-crs(nuts1)
+crs(nuts1) == crs(pop2015) # TRUE
 

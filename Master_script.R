@@ -22,6 +22,10 @@
 ## Program Set-up ------------
 
 options(scipen = 100, digits = 4) # Prefer non-scientific notation
+terra::terraOptions(
+  memfrac = 0.8,    # Use 80% of available RAM
+  progress = 10    # Show progress bar for operations >10 chunks
+)
 
 ## Load required packages ----
 
@@ -44,7 +48,7 @@ pkgs = c("dplyr", "tidyverse", "janitor", "sf"
          , "writexl", "WDI", "wesanderson", "ggrepel"
          , "ggbreak", "nuts", "httr", "jsonlite", "tidyr"
          ,"progressr", "future", "furrr", "future.apply"
-         , "ncdf4", "terra", "tidyterra", "tictoc"
+         , "ncdf4", "terra", "tidyterra", "tictoc", "pryr"
 )
 
 groundhog.library(pkgs, groundhog.day
