@@ -23,14 +23,16 @@
 source("Master_script.R")
 
 dir.create(here("Data", "ghs"), recursive = TRUE)
-dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+# dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(here("Data", "ghs", "raw"), recursive = TRUE, showWarnings = FALSE)
+dir.create(here("Data", "ghs", "plots"), recursive = TRUE, showWarnings = FALSE)
+
 
 ## Runs the following --------
 # 1. Downloads the data via URL
 # 2. Performs data checks
 # 3. Exports data in CSV
 # 4. 
-
 
 ## Downloading and Uploading data ----
 require(httr)
@@ -44,97 +46,97 @@ require(ggspatial)
 # Data form https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/
 # https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_POP_GLOBE_R2023A/
 
-output_dir <- here("Data", "ghs")
-zip_path <- file.path(output_dir, "ucdb_data.zip")
-# 
+# output_dir <- here("Data", "ghs")
+# zip_path <- file.path(output_dir, "ucdb_data.zip")
+#  
 # url <- "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_UCDB_GLOBE_R2024A/GHS_UCDB_REGION_GLOBE_R2024A/GHS_UCDB_REGION_EUROPE_R2024A/V1-0/"
 # file_name <- "GHS_UCDB_REGION_EUROPE_R2024A_V1_0.zip"
 
-url <- "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_POP_GLOBE_R2023A/GHS_POP_E2030_GLOBE_R2023A_54009_1000/V1-0/"
-file_name <- "GHS_POP_E2030_GLOBE_R2023A_54009_1000_V1_0.zip"
+# url <- "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_POP_GLOBE_R2023A/GHS_POP_E2030_GLOBE_R2023A_54009_1000/V1-0/"
+# file_name <- "GHS_POP_E2030_GLOBE_R2023A_54009_1000_V1_0.zip"
+# 
+# url <- paste0(url, file_name)
+# zip_path <- file.path(output_dir, file_name)
+# 
+# message("Downloading ", file_name, "...")
+# GET(url,
+#     write_disk(zip_path, overwrite = TRUE),
+#     config(ssl_verifypeer = FALSE))
+# 
+# # Extract files and clean up
+# unzip(zip_path, exdir = output_dir)
+# file.remove(zip_path)
 
-url <- paste0(url, file_name)
-zip_path <- file.path(output_dir, file_name)
-
-message("Downloading ", file_name, "...")
-GET(url,
-    write_disk(zip_path, overwrite = TRUE),
-    config(ssl_verifypeer = FALSE))
-
-# Extract files and clean up
-unzip(zip_path, exdir = output_dir)
-file.remove(zip_path)
-
-# 1. List the layers in UCDB----
-(layers <- st_layers(here("Data", "ghs", "GHS_UCDB_REGION_EUROPE_R2024A.gpkg")))
-# Driver: GPKG 
-# Available layers:
-#   layer_name geometry_type features fields        crs_name
-# 1  GHSL_UCDB_THEME_GENERAL_CHARACTERISTICS_GLOBE_R2024A Multi Polygon     1165     13 World_Mollweide
-# 2                     GHSL_UCDB_THEME_GHSL_GLOBE_R2024A Multi Polygon     1165    551 World_Mollweide
-# 3                GHSL_UCDB_THEME_EMISSIONS_GLOBE_R2024A Multi Polygon     1165    397 World_Mollweide
-# 4                 GHSL_UCDB_THEME_EXPOSURE_GLOBE_R2024A Multi Polygon     1165   1066 World_Mollweide
-# 5                GHSL_UCDB_THEME_GEOGRAPHY_GLOBE_R2024A Multi Polygon     1165     37 World_Mollweide
-# 6                GHSL_UCDB_THEME_GREENNESS_GLOBE_R2024A Multi Polygon     1165     63 World_Mollweide
-# 7          GHSL_UCDB_THEME_INFRASTRUCTURES_GLOBE_R2024A Multi Polygon     1165     17 World_Mollweide
-# 8                     GHSL_UCDB_THEME_LULC_GLOBE_R2024A Multi Polygon     1165     49 World_Mollweide
-# 9          GHSL_UCDB_THEME_NATURAL_SYSTEMS_GLOBE_R2024A Multi Polygon     1165     23 World_Mollweide
-# 10                     GHSL_UCDB_THEME_SDG_GLOBE_R2024A Multi Polygon     1165     43 World_Mollweide
-# 11           GHSL_UCDB_THEME_SOCIOECONOMIC_GLOBE_R2024A Multi Polygon     1165    176 World_Mollweide
-# 12                   GHSL_UCDB_THEME_WATER_GLOBE_R2024A Multi Polygon     1165     28 World_Mollweide
-# 13                 GHSL_UCDB_THEME_CLIMATE_GLOBE_R2024A Multi Polygon     1165    103 World_Mollweide
-# 14             GHSL_UCDB_THEME_HAZARD_RISK_GLOBE_R2024A Multi Polygon     1165    118 World_Mollweide
-# 15                  GHSL_UCDB_THEME_HEALTH_GLOBE_R2024A Multi Polygon     1165     17 World_Mollweide
-# 16                                         UC_centroids         Point    11422      3 World_Mollweide
-
-# Read the data
-ghs_data_eu <- st_read(here("Data", "ghs", "GHS_UCDB_REGION_EUROPE_R2024A.gpkg")
-                       , layer = "GHSL_UCDB_THEME_GHSL_GLOBE_R2024A")
-
-ghs_data_general <- st_read(here("Data", "ghs", "GHS_UCDB_REGION_EUROPE_R2024A.gpkg")
-                       , layer = "GHSL_UCDB_THEME_GENERAL_CHARACTERISTICS_GLOBE_R2024A")
-
-# Examine the structure and temporal coverage of zonal population data
-
-(str_summary <- ghs_data_eu %>% 
-               sf::st_drop_geometry() %>%  
-               dplyr::select(starts_with("GH_POP_TOT_")) %>% 
-               colnames() %>% 
-               str_extract_all("\\d+") %>%
-               unlist()
-)
-
-# [1] "1975" "1980" "1985" "1990" "1995" "2000" "2005" "2010" "2015" "2020" "2025" "2030"
-
-(str_summary <- ghs_data_general %>% 
-    sf::st_drop_geometry() %>%  
-    dplyr::select(starts_with("GC_CNT_GAD_")) %>% 
-    colnames() %>% 
-    str_extract_all("\\d+") %>%
-    unlist()
-)
-
-# Basic spatial information
-(st_crs(ghs_data_eu))
-(paste("Number of features:", nrow(ghs_data_eu)))
-
-# Summary of key attributes
-summary_stats <- ghs_data %>%
-  st_drop_geometry() %>%
-  select(all_of(pop_cols)) %>%
-  summary()
-
-print("\nPopulation statistics:")
-print(summary_stats)
-
-# Check for any missing values in population columns
-missing_values <- ghs_data %>%
-  st_drop_geometry() %>%
-  select(all_of(pop_cols)) %>%
-  summarise(across(everything(), ~sum(is.na(.))))
-
-print("\nMissing values per population column:")
-print(missing_values)
+# 1. List the layers in UCDB (deprecated) ----
+# (layers <- st_layers(here("Data", "ghs", "GHS_UCDB_REGION_EUROPE_R2024A.gpkg")))
+# # Driver: GPKG 
+# # Available layers:
+# #   layer_name geometry_type features fields        crs_name
+# # 1  GHSL_UCDB_THEME_GENERAL_CHARACTERISTICS_GLOBE_R2024A Multi Polygon     1165     13 World_Mollweide
+# # 2                     GHSL_UCDB_THEME_GHSL_GLOBE_R2024A Multi Polygon     1165    551 World_Mollweide
+# # 3                GHSL_UCDB_THEME_EMISSIONS_GLOBE_R2024A Multi Polygon     1165    397 World_Mollweide
+# # 4                 GHSL_UCDB_THEME_EXPOSURE_GLOBE_R2024A Multi Polygon     1165   1066 World_Mollweide
+# # 5                GHSL_UCDB_THEME_GEOGRAPHY_GLOBE_R2024A Multi Polygon     1165     37 World_Mollweide
+# # 6                GHSL_UCDB_THEME_GREENNESS_GLOBE_R2024A Multi Polygon     1165     63 World_Mollweide
+# # 7          GHSL_UCDB_THEME_INFRASTRUCTURES_GLOBE_R2024A Multi Polygon     1165     17 World_Mollweide
+# # 8                     GHSL_UCDB_THEME_LULC_GLOBE_R2024A Multi Polygon     1165     49 World_Mollweide
+# # 9          GHSL_UCDB_THEME_NATURAL_SYSTEMS_GLOBE_R2024A Multi Polygon     1165     23 World_Mollweide
+# # 10                     GHSL_UCDB_THEME_SDG_GLOBE_R2024A Multi Polygon     1165     43 World_Mollweide
+# # 11           GHSL_UCDB_THEME_SOCIOECONOMIC_GLOBE_R2024A Multi Polygon     1165    176 World_Mollweide
+# # 12                   GHSL_UCDB_THEME_WATER_GLOBE_R2024A Multi Polygon     1165     28 World_Mollweide
+# # 13                 GHSL_UCDB_THEME_CLIMATE_GLOBE_R2024A Multi Polygon     1165    103 World_Mollweide
+# # 14             GHSL_UCDB_THEME_HAZARD_RISK_GLOBE_R2024A Multi Polygon     1165    118 World_Mollweide
+# # 15                  GHSL_UCDB_THEME_HEALTH_GLOBE_R2024A Multi Polygon     1165     17 World_Mollweide
+# # 16                                         UC_centroids         Point    11422      3 World_Mollweide
+# 
+# # Read the data
+# ghs_data_eu <- st_read(here("Data", "ghs", "GHS_UCDB_REGION_EUROPE_R2024A.gpkg")
+#                        , layer = "GHSL_UCDB_THEME_GHSL_GLOBE_R2024A")
+# 
+# ghs_data_general <- st_read(here("Data", "ghs", "GHS_UCDB_REGION_EUROPE_R2024A.gpkg")
+#                        , layer = "GHSL_UCDB_THEME_GENERAL_CHARACTERISTICS_GLOBE_R2024A")
+# 
+# # Examine the structure and temporal coverage of zonal population data
+# 
+# (str_summary <- ghs_data_eu %>% 
+#                sf::st_drop_geometry() %>%  
+#                dplyr::select(starts_with("GH_POP_TOT_")) %>% 
+#                colnames() %>% 
+#                str_extract_all("\\d+") %>%
+#                unlist()
+# )
+# 
+# # [1] "1975" "1980" "1985" "1990" "1995" "2000" "2005" "2010" "2015" "2020" "2025" "2030"
+# 
+# (str_summary <- ghs_data_general %>% 
+#     sf::st_drop_geometry() %>%  
+#     dplyr::select(starts_with("GC_CNT_GAD_")) %>% 
+#     colnames() %>% 
+#     str_extract_all("\\d+") %>%
+#     unlist()
+# )
+# 
+# # Basic spatial information
+# (st_crs(ghs_data_eu))
+# (paste("Number of features:", nrow(ghs_data_eu)))
+# 
+# # Summary of key attributes
+# summary_stats <- ghs_data %>%
+#   st_drop_geometry() %>%
+#   select(all_of(pop_cols)) %>%
+#   summary()
+# 
+# print("\nPopulation statistics:")
+# print(summary_stats)
+# 
+# # Check for any missing values in population columns
+# missing_values <- ghs_data %>%
+#   st_drop_geometry() %>%
+#   select(all_of(pop_cols)) %>%
+#   summarise(across(everything(), ~sum(is.na(.))))
+# 
+# print("\nMissing values per population column:")
+# print(missing_values)
 
 
 
@@ -151,9 +153,7 @@ require(viridis)
 require(ggspatial)
 
 
-## Download all years, processs and store [With aide of Claude]-----
-dir.create(here("Data", "ghs", "raw"), recursive = TRUE, showWarnings = FALSE)
-dir.create(here("Data", "ghs", "plots"), recursive = TRUE, showWarnings = FALSE)
+## Download all years, process and store [With aide of Claude]-----
 
 # Setup parallel processing
 n_cores <- availableCores() - 1
@@ -164,20 +164,24 @@ BASE_URL <- "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_POP_GLOBE
 YEARS <- c(1975, 1980, 1985, 1990, 1995, 2000, 2005, 2010, 2015, 2020, 2025, 2030)
 
 # Define Europe extent
-europe_proj <- vect(cbind(c(-11,32,32,-11), c(35,35,65,65)), 
-                    type = "polygons", 
-                    crs = "EPSG:4326")
+europe_extent <- ext(-11, 32, 35, 65)  # xmin, xmax, ymin, ymax
 
 # Functions
 download_year <- function(year) {
-  file_name <- sprintf("GHS_POP_E%d_GLOBE_R2023A_54009_1000_V1_0.zip", year)
+  
+  resolution <- "4326_30ss"
+  
+  dir_name <- sprintf("GHS_POP_E%d_GLOBE_R2023A_4326_30ss", year)
+  tif_name <- sprintf("%s_V1_0.tif", dir_name)
+  zip_name <- sprintf("%s_V1_0.zip", dir_name)
+  
   url <- file.path(BASE_URL, 
-                   sprintf("GHS_POP_E%d_GLOBE_R2023A_54009_1000/V1-0", year), 
-                   file_name)
-  zip_path <- here("Data", "ghs", "raw", file_name)
-
-  tif_path <- here("Data", "ghs", "raw", 
-                   sprintf("GHS_POP_E%d_GLOBE_R2023A_54009_1000_V1_0.tif", year))
+                   paste0(dir_name, "/V1-0"), 
+                   zip_name)
+  
+  zip_path <- here("Data", "ghs", "raw", zip_name)
+  tif_path <- here("Data", "ghs", "raw", tif_name)
+  
   if(file.exists(tif_path)) {
     message(sprintf("File for year %d already exists, skipping download.", year))
     return(TRUE)
@@ -230,13 +234,6 @@ successful_years <- YEARS[unlist(download_results)]
 message("\nStarting processing phase...")
 tic("Raster Processing")
 
-# Pre-compute projections
-message("Pre-computing projections...")
-europe_proj_3035 <- project(europe_proj, "EPSG:3035")
-target_rast <- rast(crs = "EPSG:3035",
-                    resolution = c(1000, 1000),
-                    extent = ext(europe_proj_3035))
-
 process_files <- function(years, batch_size = 5) {
   n_batches <- ceiling(length(years) / batch_size)
   results <- vector("list", length(years))
@@ -256,27 +253,26 @@ process_files <- function(years, batch_size = 5) {
       tic(sprintf("Year %d", year))
       
       input_path <- here("Data", "ghs", "raw", 
-                         sprintf("GHS_POP_E%d_GLOBE_R2023A_54009_1000_V1_0.tif", year))
+                         sprintf("GHS_POP_E%d_GLOBE_R2023A_4326_30ss_V1_0.tif", year))
       output_path <- here("Data", "ghs",
                           sprintf("pop_data_eu_%d.tif", year))
       
       tryCatch({
-        pop_data <- rast(input_path) %>%
-          crop(project(europe_proj_3035, crs(.)))
         
-        pop_data <- terra::project(pop_data, target_rast, 
-                                   method="bilinear", 
-                                   threads=TRUE)
-        
+        pop_data <- rast(input_path)
+        pop_data <- crop(pop_data, europe_extent)
+
         if(!all(is.na(values(pop_data)))) {
-          writeRaster(pop_data, output_path, 
+          writeRaster(pop_data, output_path,
                       overwrite = TRUE, datatype = "FLT4S")
           toc(log = TRUE)
           return(pop_data)
         }
+        
         message(sprintf("Warning: Empty raster for year %d", year))
         return(NULL)
       }, error = function(e) {
+        
         message(sprintf("Error processing year %d: %s", year, e$message))
         return(NULL)
       })
@@ -285,7 +281,8 @@ process_files <- function(years, batch_size = 5) {
     results[batch_start:batch_end] <- batch_results
     toc(log = TRUE)
     gc(verbose = FALSE)
-  }
+    }
+  
   return(results)
 }
 
@@ -388,7 +385,6 @@ available_years <- list.files(here("Data", "ghs"),
 
 analyze_population_data(available_years)
 
-
 # 3. Aggregates population grids----
 # With a lot of aide of Claude, for messaging system, parallelizing and debugging
 
@@ -430,59 +426,49 @@ log_message <- function(msg, type = "info") {
   cat(sprintf("[%s] %s %s\n", timestamp, prefix, msg))
 }
 
-#' Format numbers with commas
-format_pop <- function(x) {
-  format(x, big.mark = ",", scientific = FALSE, trim = TRUE)
-}
+#' #' Format numbers with commas
+#' format_pop <- function(x) {
+#'   format(x, big.mark = ",", scientific = FALSE, trim = TRUE)
+#' }
 
-#' Aggregate raster to target resolution
-#' @param r Input raster
-#' @param target_res Target resolution in meters
-#' @return List with aggregated raster and aggregation stats
+#' Harmonize population grid to climate grid resolution
+#' @param pop SpatRaster with population data
+#' @param template SpatRaster template for target resolution
+#' @param method Character: "sum" or "bilinear"
+#' @return List with harmonized raster and QC stats
 
-aggregate_ghs <- function(r, target_res) {
-  current_res <- res(r)[1]
+harmonize_population <- function(pop, template, method="sum") {
   
-  if(target_res <= current_res) {
-    log_message("Target resolution is smaller or equal to current resolution", "warning")
-    return(list(
-      raster = r,
-      aggregated = FALSE,
-      orig_total = global(r, "sum", na.rm=TRUE)[[1]],
-      agg_total = global(r, "sum", na.rm=TRUE)[[1]],
-      agg_factor = 1
-    ))
+  if(!is.SpatRaster(pop) || !is.SpatRaster(template)) {
+    stop("Inputs must be SpatRaster objects")
   }
   
-  # Calculate aggregation factor
-  agg_factor <- ceiling(target_res / current_res)
-  log_message(sprintf("Aggregating from %g to %g meters (factor: %d)", 
-                      current_res, target_res, agg_factor), "info")
+  if(!identical(crs(pop), crs(template))) {
+    stop("CRS mismatch between population and template")
+  }
   
-  # Store original total
-  orig_total <- global(r, "sum", na.rm=TRUE)[[1]]
+  # Store original total population
+  orig_total <- global(pop, "sum", na.rm=TRUE)[[1]]
   
-  # Perform aggregation
-  r_agg <- aggregate(r, fact=agg_factor, fun="sum", na.rm=TRUE)
+  # Determine resampling approach
+  if(res(pop)[1] > res(template)[1]) {
+    # Disaggregating - use bilinear
+    pop_harm <- resample(pop, template, method="bilinear")
+  } else {
+    # Aggregating - use sum to preserve counts
+    pop_harm <- resample(pop, template, method="sum")
+  }
   
   # Check population preservation
-  agg_total <- global(r_agg, "sum", na.rm=TRUE)[[1]]
-  diff_pct <- (agg_total - orig_total) / orig_total * 100
+  new_total <- global(pop_harm, "sum", na.rm=TRUE)[[1]]
+  diff_pct <- (new_total - orig_total) / orig_total * 100
   
-  if(abs(diff_pct) > 0.01) {
-    log_message(sprintf("Warning: Aggregation changed total population by %.4f%%", 
-                        diff_pct), "warning")
-  } else {
-    log_message("Population preserved after aggregation", "success")
-  }
-  
-  return(list(
-    raster = r_agg,
-    aggregated = TRUE,
+  list(
+    raster = pop_harm,
     orig_total = orig_total,
-    agg_total = agg_total,
-    agg_factor = agg_factor
-  ))
+    new_total = new_total,
+    diff_pct = diff_pct
+  )
 }
 
 #' Validate GHS raster against Eurostat data
@@ -549,7 +535,7 @@ validate_ghs_file <- function(rast_path, year, eupop = NULL,
   r <- rast(rast_path)
   
   # Perform aggregation
-  agg_result <- aggregate_ghs(r, target_res)
+  agg_result <- harmonize_population(r, target_res)
   r_final <- agg_result$raster
   
   # Save aggregated raster if output directory is provided
@@ -730,7 +716,7 @@ process_ghs_timeseries <- function(input_dir = here("Data", "ghs"),
       target = target_res,
       original = sapply(validation_results, function(x) x$basic_checks$orig_res)
     ),
-    crs = "EPSG:3035",
+    crs = "EPSG:4326",
     eurostat_validation = TRUE,
     validation_summary = validation_summary,
     processing_time = difftime(Sys.time(), total_time, units = "secs"),

@@ -64,28 +64,33 @@ eu_countries <- c(
   "VAT"
 )
 
-# Wrapper function to process all European countries
-process_european_climate_data <- function(chunk_size = 5) {
+# Wrapper function to process European countries with AWS S3 data
+process_european_climate_data <- function(countries = eu_countries,
+                                          chunk_size = 5,
+                                          collection = "cmip6-x0.25",
+                                          scenarios = c("ssp245", "ssp585")) {
   # Set up parallel processing
   future::plan(future::multisession)
   
-  # Split countries into chunks for batch processing
-  country_chunks <- split(eu_countries, ceiling(seq_along(eu_countries)/chunk_size))
+  # Split countries into chunks
+  country_chunks <- split(countries, ceiling(seq_along(countries)/chunk_size))
   
-  # Process chunks in parallel
-  results <- future_map(country_chunks, function(countries) {
+  # Process chunks in parallel 
+  results <- future_map(country_chunks, function(chunk_countries) {
     chunk_results <- list()
     
-    for(country in countries) {
+    for(country in chunk_countries) {
       message(sprintf("\nProcessing country: %s", country))
       
-      # Try to get data with error handling
       tryCatch({
         chunk_results[[country]] <- get_climate_data_batch_parallel(
-          geocode = country
+          collection = collection,
+          scenarios = scenarios
         )
-        # Add delay between countries in same chunk to respect rate limits
+        
+        # Small delay between countries
         Sys.sleep(2)
+        
       }, error = function(e) {
         message(sprintf("Error processing %s: %s", country, e$message))
         chunk_results[[country]] <- NULL
@@ -104,10 +109,17 @@ process_european_climate_data <- function(chunk_size = 5) {
     rows = sapply(all_results, function(x) if(!is.null(x)) nrow(x) else 0)
   )
   
-  # Save combined results
-  saveRDS(all_results, file = here::here("Output", "european_climate_data_all.rds"))
-  write.csv(summary, file = here::here("Output", "european_climate_data_summary.csv"))
+  # Save results
+  saveRDS(all_results, 
+          file = file.path("Output", 
+                           paste0("european_climate_data_", 
+                                  paste(scenarios, collapse="_"),
+                                  "_", Sys.Date(), ".rds")))
   
+  write.csv(summary, 
+            file = file.path("Output", 
+                             paste0("european_climate_data_summary_",
+                                    Sys.Date(), ".csv")))
   # Clean up parallel processing
   future::plan(future::sequential)
   

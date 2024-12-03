@@ -74,6 +74,7 @@ pkgs = c("dplyr", "tidyverse", "janitor", "sf"
          , "ggbreak", "nuts", "httr", "jsonlite", "tidyr"
          ,"progressr", "future", "furrr", "future.apply"
          , "ncdf4", "terra", "tidyterra", "tictoc", "pryr"
+         , "aws.s3"
 )
 
 groundhog.library(pkgs, groundhog.day
