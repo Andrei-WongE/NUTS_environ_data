@@ -27,7 +27,8 @@ dir.create(here("Data", "nuts"), recursive = TRUE)
 
 ## Runs the following --------
 # 1. Load the NUTS data
-# 2. 
+# 2. Create separate NUTS level objects
+# 3. Vectorize and sets CRS to Mollweide
 
 # https://github.com/antaldaniel/eurostat_regional/blob/master/Rearrange-Regional-Data.md
 # Nuts R package: https://cran.r-project.org/web/packages/nuts/vignettes/nuts.html
@@ -37,8 +38,7 @@ dir.create(here("Data", "nuts"), recursive = TRUE)
 ## Loading data --------
 require(nuts)
 
-nuts <- vect(here("Data", "nuts","NUTS_RG_20M_2016_3035.geojson")) %>% 
-        
+nuts <- vect(here("Data", "nuts","NUTS_RG_20M_2016_3035.geojson"))
 
 glimpse(nuts)
 
@@ -63,9 +63,12 @@ terra::values(nuts) %>% View()
 nuts1 <- nuts[nuts$LEVL_CODE == 1,]
 nuts2 <- nuts[nuts$LEVL_CODE == 2,]
 
-# Verify CRS matches population data
-nuts1 <- project(nuts1, "EPSG:3035") 
-nuts2 <- project(nuts2, "EPSG:3035")
+# Converting to terra vector
+nuts1_vect <- terra::vect(nuts1)
+nuts2_vect <- terra::vect(nuts2)
 
-crs(nuts1) == crs(pop2015) # TRUE
+# Verify CRS matches population data
+nuts1_vect <- st_transform(nuts1_vect, 4326)
+nuts2_vect <- st_transform(nuts2_vect, 4326)
+
 

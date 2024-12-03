@@ -391,6 +391,7 @@ analyze_population_data(available_years)
 
 # 3. Aggregates population grids----
 # With a lot of aide of Claude, for messaging system, parallelizing and debugging
+
 # Following functions does 
 # Validation Checks:
   # CRS consistency
@@ -775,10 +776,10 @@ validation <- fread(here("Data", "ghs", "validation_summary.csv"))
 (metadata <- readRDS(here("Data", "ghs", "processing_metadata.rds")))
 
 # [21:37:43] === === GHS Processing Pipeline Started ===
-#   [21:37:43] === Found 12 files to process (1975-2030)
+# [21:37:43] === Found 12 files to process (1975-2030)
 # [21:37:59] === Using 12 cores for processing
 # [21:38:04] === 
-#   Processing year 1975
+# Processing year 1975
 # [21:38:04] === Aggregating from 1000 to 25000 meters (factor: 25)
 # [21:38:05] ✓ Population preserved after aggregation
 # [21:38:05] === Saving aggregated raster to: C:/Users/Andre/OneDrive - Birkbeck, University of London/R/R_projects/NUTS_environ_data/Output/pop_data_eu_1975_25km.tif

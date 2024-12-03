@@ -27,6 +27,31 @@ terra::terraOptions(
   progress = 10    # Show progress bar for operations >10 chunks
 )
 
+## Runs the following ----------------------------------------------------------
+
+# # Step 1: Data Preparation
+# # Download and read data
+
+# # Reproject everything to WGS84
+
+# # Step 2: Grid Harmonization
+# # Verify CRS of data
+# # Resample population to climate grid
+
+# # Step 3: Weighting, check if this is necessary
+# # Calculate population weights per grid cell
+
+# # Apply weights to climate data
+
+# # Step 4: Regional Aggregation
+# # Convert NUTS to terra vector
+# 
+# # Aggregate to NUTS regions using exact extraction
+
+# # Aggregate output, by layers or different objects
+
+## -----------------------------------------------------------------------------
+
 ## Load required packages ----
 
 library("pacman")
@@ -54,4 +79,3 @@ pkgs = c("dplyr", "tidyverse", "janitor", "sf"
 groundhog.library(pkgs, groundhog.day
                   #, ignore.deps =  "fs"
                   )
-
