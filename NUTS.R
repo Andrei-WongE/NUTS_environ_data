@@ -63,12 +63,9 @@ terra::values(nuts) %>% View()
 nuts1 <- nuts[nuts$LEVL_CODE == 1,]
 nuts2 <- nuts[nuts$LEVL_CODE == 2,]
 
-# Converting to terra vector
-nuts1_vect <- terra::vect(nuts1)
-nuts2_vect <- terra::vect(nuts2)
+# Transform coordinate systems
+nuts1_vect <- terra::project(nuts1, "epsg:4326")
+nuts2_vect <- terra::project(nuts2, "epsg:4326")
 
-# Verify CRS matches population data
-nuts1_vect <- st_transform(nuts1_vect, 4326)
-nuts2_vect <- st_transform(nuts2_vect, 4326)
-
+crs(nuts1_vect)==crs(nuts2_vect)
 
