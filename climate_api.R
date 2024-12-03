@@ -20,7 +20,9 @@ get_climate_data <- function(collection = "cmip6-x0.25",
     "_", collection, "_", model_scenario, "_", product_type, "_", 
     percentile, "_", time_period, ".nc"
   )
-    
+  
+  local_file <- file.path(here::here("Data", "raw_climate"), filename)
+  
   url <- paste0(
     "https://wbg-cckp.s3.amazonaws.com/data/",
     collection, "/", 
@@ -28,16 +30,12 @@ get_climate_data <- function(collection = "cmip6-x0.25",
     model_scenario, "/",
     filename
   )
-
+  
   # print(url)
   
-  # Create temp file for download
-  temp_file <- tempfile(fileext = ".nc")
-  on.exit(unlink(temp_file))
-
     response <- httr::GET(
       url,
-      httr::write_disk(temp_file),
+      httr::write_disk(local_file, overwrite = TRUE),
       httr::progress()
     )
     
@@ -45,49 +43,9 @@ get_climate_data <- function(collection = "cmip6-x0.25",
       stop(paste("Failed to download file:", httr::http_status(response)$message))
     }
     
-    df <- terra::rast(temp_file)
-    # df <- terra::as.data.frame(r, xy=TRUE)
-    
-    print(paste("SpatRaster cells:", terra::ncell(df)))
-    print(paste("Data frame rows:", nrow(df)))
-    
-    # Add metadata 
-    df$collection <- collection
-    df$variable <- variable_code
-    df$scenario <- scenario
-    df$model <- model
-    df$time_period <- time_period
-    df$crs <- terra::crs(df)
-    df$resolution <- terra::res(df)
+    df <- terra::rast(local_file,lyrs = 1)
     
     return(df)
-}
-
-# Function for parallel processing
-get_climate_data_batch <- function(variables,
-                                   collection = "cmip6-x0.25",
-                                   scenario = "ssp245",
-                                   chunk_size = 3) {
-  
-  future::plan(future::multisession)
-  
-  var_chunks <- split(variables, ceiling(seq_along(variables)/chunk_size))
-  
-  results <- future_map(var_chunks, function(vars) {
-    map_df(vars, function(var) {
-      get_climate_data(
-        collection = collection,
-        variable_code = var,
-        scenario = scenario
-      )
-    })
-  }, .progress = TRUE)
-  
-  final_df <- bind_rows(results)
-  
-  future::plan(future::sequential)
-  
-  return(final_df)
 }
 
 # Function to batch process climate data in parallel from AWS S3 -----
@@ -98,63 +56,58 @@ get_climate_data_batch_parallel <- function(variables = c("tas", "cdd65", "hdd65
                                             scenarios = c("ssp245", "ssp585"),
                                             chunk_size = 3) {
   
-  # Set up parallel processing
-  future::plan(future::multisession)
+  jobs <- expand.grid(variable = variables,
+                      scenario = scenarios,
+                      stringsAsFactors = FALSE
+                      )
   
   # Split variables into chunks
-  var_chunks <- split(variables, ceiling(seq_along(variables)/chunk_size))
+  job_chunks <- split(jobs, ceiling(seq_along(1:nrow(jobs))/chunk_size))  
+  
+  # Set up parallel processing
+  future::plan(future::multisession
+               , workers = parallel::detectCores() - 2
+               )
+  
+  on.exit(future::plan(future::sequential))
   
   # Progress tracking
-  total_chunks <- length(var_chunks)
-  message("\nProcessing ", length(variables), " variables in ", total_chunks, " chunks")
+  total_chunks <- length(job_chunks)
+  message("\nProcessing ", length(variables), " variables in "
+          , total_chunks, " chunks")
   
-  # Process chunks in parallel
-  results <- future_map(seq_along(var_chunks), function(chunk_idx) {
-    current_vars <- var_chunks[[chunk_idx]]
-    
-    message("\nProcessing chunk ", chunk_idx, " of ", total_chunks, 
-            ": ", paste(current_vars, collapse = ", "))
-    
-    # Get data for each scenario
-    scenario_results <- lapply(scenarios, function(scenario) {
-    
-    # Process each variable separately
-      var_results <- lapply(current_vars, function(var) {
-        scenario_results <- lapply(scenarios, function(scenario) {
-          get_climate_data(
-            collection = collection,
-            variable_code = var,  # Now passing single variable
-            scenario = scenario
-          )
-        })
-        
-        bind_rows(scenario_results)
-      })
-      
-      if(!is.null(result)) result$scenario <- scenario
-      return(result)
-    })
-    
-    return(bind_rows(scenario_results))
-  }, .progress = TRUE)
+  future_map(seq_len(nrow(jobs)), 
+             function(i) {
+               tryCatch({
+                 get_climate_data(
+                   variable_code = jobs$variable[i],
+                   scenario = jobs$scenario[i]
+                 )
+               }, error = function(e) {
+                 message(sprintf("Failed: %s-%s: %s", 
+                                 jobs$variable[i], jobs$scenario[i], e$message))
+               })
+             },
+             .options = furrr::furrr_options(seed = TRUE),
+             .progress = TRUE)
   
-  # Combine results
-  final_df <- bind_rows(results)
+  gc()
   
-  # Save results
-  if (!is.null(final_df) && nrow(final_df) > 0) {
-    output_file <- file.path("Output", "climate_data", 
-                             paste0("climate_data_", collection, "_", 
-                                    paste(scenarios, collapse = "_"), "_",
-                                    Sys.Date(), ".csv"))
-    write.csv(final_df, output_file, row.names = FALSE)
-    message("\nCombined results saved to: ", output_file)
-  }
+  # List downloaded .nc files
+  nc_files <- list.files(here("Data", "raw_climate")
+                         , pattern = ".nc$"
+                         , full.names = TRUE
+  )
   
-  # Clean up
-  future::plan(future::sequential)
+  combined <- terra::rast(nc_files)  # Does not work with a SpatRasterCollection
   
-  return(final_df)
+  # Write consolidated NetCDF
+  terra::writeCDF(combined
+                  , here::here("Output","climate_data_cmip6-x0.25_combined.nc" )
+                  , overwrite = TRUE)
+  
+  message("Data consolidated...")
+  return(combined)
 }
 
 
