@@ -43,8 +43,12 @@ get_climate_data <- function(collection = "cmip6-x0.25",
       stop(paste("Failed to download file:", httr::http_status(response)$message))
     }
     
-    df <- terra::rast(local_file,lyrs = 1)
+    df <- terra::rast(local_file
+                      , lyrs = 1
+                      )
     
+    terra::set.names(df, paste(variable_code, scenario, sep="_"))
+
     return(df)
 }
 
@@ -79,7 +83,7 @@ get_climate_data_batch_parallel <- function(variables = c("tas", "cdd65", "hdd65
   future_map(seq_len(nrow(jobs)), 
              function(i) {
                tryCatch({
-                 get_climate_data(
+                 df <- get_climate_data(
                    variable_code = jobs$variable[i],
                    scenario = jobs$scenario[i]
                  )
@@ -89,7 +93,9 @@ get_climate_data_batch_parallel <- function(variables = c("tas", "cdd65", "hdd65
                })
              },
              .options = furrr::furrr_options(seed = TRUE),
-             .progress = TRUE)
+             .progress = TRUE
+             )
+  
   
   gc()
   
@@ -104,7 +110,15 @@ get_climate_data_batch_parallel <- function(variables = c("tas", "cdd65", "hdd65
   # Write consolidated NetCDF
   terra::writeCDF(combined
                   , here::here("Output","climate_data_cmip6-x0.25_combined.nc" )
-                  , overwrite = TRUE)
+                  , prec = "double"  #Sets 64-bit floating point precision
+                  , compression = 9
+                  , overwrite = TRUE
+                  , atts = list(
+                      collection = collection,
+                      source = "CMIP6",
+                      date_downloaded = as.character(Sys.Date())
+                      )
+                )
   
   message("Data consolidated...")
   return(combined)

@@ -54,6 +54,8 @@ cmip6 <- get_climate_data_batch_parallel(variables = c("tas", "cdd65"
                                          , chunk_size = 3
                                          )
 
+temp <- raster::stack(here("Output", "climate_data_cmip6-x0.25_combined.nc"))
+
 # results <- test_parallel_api("FRA")
 # 
 # # Or direct use with custom parameters
