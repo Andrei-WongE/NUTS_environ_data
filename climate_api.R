@@ -1,64 +1,139 @@
 # Function to download climate data from WB AWS S3-----
-get_climate_data <- function(collection = "cmip6-x0.25",
-                             variable_code, 
+get_climate_data <- function(collection,
+                             variable_code,
                              product = "climatology",
-                             scenario = "ssp245", 
+                             scenario = NULL,
                              aggregation = "annual",
-                             model = "ensemble-all",
-                             time_period = "2040-2059",
-                             percentile = "median",
+                             time_period = NULL,
                              product_type = "climatology",
+                             model = NULL,
+                             percentile = NULL,
                              statistic = "mean") {
   
   # Construct file path following CCKP structure
   model_scenario <- paste0(model, "-", scenario)
   
-  filename <- paste0(
-    # First part with hyphens
-    paste(product, variable_code, aggregation, statistic, sep="-"),
-    # Second part with underscores
-    "_", collection, "_", model_scenario, "_", product_type, "_", 
-    percentile, "_", time_period, ".nc"
-  )
+  if(collection == "era5-x0.25") {
+    
+    collection_id <- paste0(collection, "-historical")
+    
+    filename <- paste0(
+      paste(product_type, variable_code, aggregation, statistic, sep="-"), "_",
+      collection, "_",
+      collection_id, "_",
+      product_type, "_",
+      statistic, "_",
+      time_period, ".nc"
+    )
+    
+    url <- paste0(
+      "https://wbg-cckp.s3.amazonaws.com/data/",
+      collection, "/",
+      variable_code, "/",
+      collection_id, "/",
+      filename
+    )
+    
+  } else if (collection == "cmip6-x0.25") {
+    
+    filename <- paste0(
+      paste(product, variable_code, aggregation, statistic, sep="-"),
+      "_", collection, "_", 
+      paste0(model, "-", scenario), "_", 
+      product_type, "_", percentile, "_",
+      time_period, ".nc"
+    )
+    
+    url <- paste0(
+      "https://wbg-cckp.s3.amazonaws.com/data/",
+      collection, "/", 
+      variable_code, "/",
+      paste0(model, "-", scenario), "/",
+      filename
+    )
+    
+  } else if(collection == "pop-x0.25") {
+    collection_id <- paste0("gpw-v4-rev11-", scenario)
+    
+    filename <- paste0(
+      paste(product_type, variable_code, aggregation, "mean", sep="-"),
+      "_", collection, "_",
+      collection_id, "_",
+      product_type, "_",
+      "mean", "_",
+      time_period, ".nc"
+    )
+    
+    url <- paste0(
+      "https://wbg-cckp.s3.amazonaws.com/data/",
+      collection, "/",
+      variable_code, "/",
+      collection_id, "/",
+      filename
+    )
+  } else (message("ERROR: not a valid collection"))
+  
+  print(url)
   
   local_file <- file.path(here::here("Data", "raw_climate"), filename)
   
-  url <- paste0(
-    "https://wbg-cckp.s3.amazonaws.com/data/",
-    collection, "/", 
-    variable_code, "/",
-    model_scenario, "/",
-    filename
-  )
+  head_response <- httr::HEAD(url)
+  expected_size <- httr::headers(head_response)$`content-length`
   
-  # print(url)
-  
-    response <- httr::GET(
+  response <- httr::GET(
       url,
       httr::write_disk(local_file, overwrite = TRUE),
       httr::progress()
     )
-    
-    if(httr::status_code(response) != 200) {
+  
+  downloaded_size <- httr::headers(response)$`content-length`
+  actual_size <- file.size(local_file)
+  
+  if(httr::status_code(response) != 200) {
       stop(paste("Failed to download file:", httr::http_status(response)$message))
     }
-    
+  
+  if (!is.null(expected_size) && !is.null(downloaded_size)) {
+    if (expected_size != downloaded_size) {
+      warning("Warning: Downloaded size differs from expected size")
+    } else {
+      message("File sizes match as expected")
+    }
+  }
+
     df <- terra::rast(local_file
                       , lyrs = 1
+                      # , subds = variable_code
                       )
     
     terra::set.names(df, paste(variable_code, scenario, sep="_"))
-
+    
     return(df)
 }
 
 # Function to batch process climate data in parallel from AWS S3 -----
-get_climate_data_batch_parallel <- function(variables = c("tas", "cdd65", "hdd65", 
-                                                          "hd30", "hd35", "fd", 
-                                                          "id", "r20mm"),
-                                            collection = "cmip6-x0.25",
-                                            scenarios = c("ssp245", "ssp585"),
-                                            chunk_size = 3) {
+get_climate_data_batch_parallel <-  function(collection,
+                                             variables,
+                                             scenarios = NULL,
+                                             product = "climatology",
+                                             aggregation = "annual",
+                                             time_period = NULL,
+                                             product_type = "climatology",
+                                             model = "ensemble-all",
+                                             percentile = "median",
+                                             statistic = "mean",
+                                             chunk_size = 3) {
+  
+  if(collection == "era5-x0.25") {
+    
+    scenarios <- "historical_era5"
+    time_period <- time_period %||% "1991-2020"
+    
+  } else {
+    
+    scenarios <- scenarios %||% c("ssp245", "ssp585")
+    time_period <- time_period %||% "2040-2059"
+  }
   
   jobs <- expand.grid(variable = variables,
                       scenario = scenarios,
@@ -72,7 +147,6 @@ get_climate_data_batch_parallel <- function(variables = c("tas", "cdd65", "hdd65
   future::plan(future::multisession
                , workers = parallel::detectCores() - 2
                )
-  
   on.exit(future::plan(future::sequential))
   
   # Progress tracking
@@ -83,9 +157,17 @@ get_climate_data_batch_parallel <- function(variables = c("tas", "cdd65", "hdd65
   future_map(seq_len(nrow(jobs)), 
              function(i) {
                tryCatch({
-                 df <- get_climate_data(
+                 get_climate_data(
+                   collection = collection,
                    variable_code = jobs$variable[i],
-                   scenario = jobs$scenario[i]
+                   scenario = jobs$scenario[i],
+                   product = product,
+                   aggregation = aggregation,
+                   time_period = time_period,
+                   product_type = product_type,
+                   model = model,
+                   percentile = percentile,
+                   statistic = statistic
                  )
                }, error = function(e) {
                  message(sprintf("Failed: %s-%s: %s", 
@@ -95,32 +177,46 @@ get_climate_data_batch_parallel <- function(variables = c("tas", "cdd65", "hdd65
              .options = furrr::furrr_options(seed = TRUE),
              .progress = TRUE
              )
-  
-  
   gc()
   
   # List downloaded .nc files
+  pattern <- if(grepl("era5", collection)) {
+    sprintf("^.*era5-x0.25.*\\.nc$")
+  } else if(grepl("cmip6", collection)) {
+    sprintf("^.*cmip6-x0.25.*\\.nc$")
+  }
+  
   nc_files <- list.files(here("Data", "raw_climate")
-                         , pattern = ".nc$"
+                         , pattern = pattern
                          , full.names = TRUE
   )
   
   combined <- terra::rast(nc_files)  # Does not work with a SpatRasterCollection
   
+  naming <- paste("climate_data", 
+                  collection,
+                  scenarios, 
+                  product_type,
+                  time_period,
+                  "combined.nc",
+                  sep="_")
+  
   # Write consolidated NetCDF
   terra::writeCDF(combined
-                  , here::here("Output","climate_data_cmip6-x0.25_combined.nc" )
+                  , here::here("Output", naming)
                   , prec = "double"  #Sets 64-bit floating point precision
                   , compression = 9
                   , overwrite = TRUE
                   , atts = list(
                       collection = collection,
-                      source = "CMIP6",
+                      source = if(collection == "era5-x0.25") "ERA5" else "CMIP6",
                       date_downloaded = as.character(Sys.Date())
                       )
                 )
   
   message("Data consolidated...")
+  unlink(here("Data", "raw_climate", "*.nc"))
+
   return(combined)
 }
 

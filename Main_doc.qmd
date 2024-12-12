@@ -105,3 +105,100 @@ Operation: GHS 1km grid using Mollewiede projection to ERAS5 25km grid using WGS
 ```{r}
 1 + 1
 ```
+
+# Dataset building
+
+##  era5-x0.25_A:
+ERA5 data is provided at 0.25 x 0.25-degree resolution globally. This indicates it uses a regular latitude/longitude grid (WGS84/EPSG:4326).
+
+Panel with waves 2010-2022 for each NUTS1/NUTS2 region. 
+Use population weights to aggregate the climate grisdcell level data.
+The population data comes from GHS data using as base the years of 2010,2015 and 2020.
+
+Population-weighted varaible is produced by multiplying the value of the varaiable in a given cell with the population in the same cell, summing over the area, and the dividing by the total population in that area.
+
+The API query function was parametrized with the following values:
+
+| Variable | Code | Product | Scenarios | Aggregation | Model | Period | Type |
+|----------|-------|----------|------------|-------------|--------|---------|------|
+| Mean Temperature | tas | timeseries | historical_era5 | annual | Ensemble_all | 1950-2022 | timeseries |
+| Cooling Degree Days (>18°C/65°F) | cdd65 | timeseries | historical_era5 | annual | Ensemble_all | 1950-2022 | timeseries |
+| Heating Degree Days (<18°C/65°F) | hdd65 | timeseries | historical_era5 | annual | Ensemble_all | 1950-2022 | timeseries |
+| Hot Days (Tmax>30°C) | hd30 | timeseries | historical_era5 | annual | Ensemble_all | 1950-2022 | timeseries |
+| Very Hot Days (Tmax>35°C) | hd35 | timeseries | historical_era5 | annual | Ensemble_all | 1950-2022 | timeseries |
+| Frost Days (Tmin<0°C) | fd | timeseries | historical_era5 | annual | Ensemble_all | 1950-2022 | timeseries |
+| Ice Days (Tmax<0°C) | id | timeseries | historical_era5 | annual | Ensemble_all | 1950-2022 | timeseries |
+| Days with Precipitation >20mm | r20mm | timeseries | historical_era5 | annual | Ensemble_all | 1950-2022 | timeseries |
+| Days with Precipitation >50mm | r50mm | timeseries | historical_era5 | annual | Ensemble_all | 1950-2022 | timeseries |
+| Precipitation | pr | timeseries | historical_era5 | annual | Ensemble_all | 1950-2022 | timeseries |
+
+First we use NUTS1&2 extent to clip ERA5 model extent.
+Secondly we use the population grid to aggregate the climate data to NUTS1&2 level.
+This gives area-weighted values that account for the changing grid cell size with latitude. It's particularly important for large NUTS regions that span multiple latitudes.
+
+
+```{r era5_data_a}
+# exist(era5_data_a)
+# exist(nuts1)
+# exist(nuts2)
+
+# Check data, just opens connection
+ncdf4::nc_open(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1950-2022_combined.nc"))
+
+# Load data
+r <- terra::rast(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1950-2022_combined.nc"))
+crs(r) <- "EPSG:4326"
+
+# Get NUTS extent and transform to WGS84
+nuts_wgs84 <- project(ext(nuts1), from="EPSG:3035", to="EPSG:4326")
+
+# Crop ERA5 extent, NUTS1 has the same extent as NUTS2
+era5_europe <- crop(r, nuts_wgs84)
+
+# Project to match NUTS
+era5_data_nuts <- project(era5_europe, "EPSG:3035")
+
+# Create raster versions of NUTS using ERA5 as template, to perform raster-based zonal statistics afterwards
+nuts1_rast <- rasterize(nuts1, era5_data_nuts, field="NUTS_ID")  
+nuts2_rast <- rasterize(nuts2, era5_data_nuts, field="NUTS_ID")
+
+# Latitudinal weighting
+weights <- terra::cellSize(era5_europe)
+
+# Add administrative boundaries of nuts1 and nuts1 by masking
+era5_data_a_nuts1 <- mask(era5_data_nuts * weights, nuts1) / mask(weights, nuts1)
+era5_data_a_nuts2 <- mask(era5_data_nuts * weights, nuts2) / mask(weights, nuts2)
+
+# Verify alignment
+compareGeom(era5_data_a_nuts1, era5_data_a_nuts2, (nuts1))
+
+```
+
+##  era5-x0.25_B:
+Dataset with one value per variable for each NUTS1/NUTS2 region. 
+We will add anomalues to this value to create future climate scenarios
+
+
+The API query function was parametrized with the following values:
+
+Caveat:pr available timeperiod is 1991-2020.
+
+| Variable | Code | Product | Scenarios | Aggregation | Model | Period | Type |
+|----------|-------|----------|------------|-------------|--------|---------|------|
+| Mean Temperature | tas | Climatology | historical_era5 | annual | Ensemble_all | 1995-2014 | climatology |
+| Cooling Degree Days (>18°C/65°F) | cdd65 | Climatology | historical_era5 | annual | Ensemble_all | 1995-2014 | climatology |
+| Heating Degree Days (<18°C/65°F) | hdd65 | Climatology | historical_era5 | annual | Ensemble_all | 1995-2014 | climatology |
+| Hot Days (Tmax>30°C) | hd30 | Climatology | historical_era5 | annual | Ensemble_all | 1995-2014 | climatology |
+| Very Hot Days (Tmax>35°C) | hd35 | Climatology | historical_era5 | annual | Ensemble_all | 1995-2014 | climatology |
+| Frost Days (Tmin<0°C) | fd | Climatology | historical_era5 | annual | Ensemble_all | 1995-2014 | climatology |
+| Ice Days (Tmax<0°C) | id | Climatology | historical_era5 | annual | Ensemble_all | 1995-2014 | climatology |
+| Days with Precipitation >20mm | r20mm | Climatology | historical_era5 | annual | Ensemble_all | 1995-2014 | climatology |
+| Days with Precipitation >50mm | r50mm | Climatology | historical_era5 | annual | Ensemble_all | 1995-2014 | climatology |
+| Precipitation | pr | Climatology | historical_era5 | annual | Ensemble_all | 1995-2014 | climatology |
+
+
+
+
+
+
+
