@@ -100,7 +100,8 @@ get_climate_data <- function(collection,
       message("File sizes match as expected")
     }
   }
-
+  
+  # terra::writeCDF which has limitations for metadata handling
     df <- terra::rast(local_file
                       , lyrs = 1
                       # , subds = variable_code
@@ -179,45 +180,58 @@ get_climate_data_batch_parallel <-  function(collection,
              )
   gc()
   
-  # List downloaded .nc files
+  # List downloaded files 
   pattern <- if(grepl("era5", collection)) {
     sprintf("^.*era5-x0.25.*\\.nc$")
   } else if(grepl("cmip6", collection)) {
-    sprintf("^.*cmip6-x0.25.*\\.nc$")
+    sprintf("^.*cmip6-x0.25.*\\.nc$") 
   }
   
-  nc_files <- list.files(here("Data", "raw_climate")
-                         , pattern = pattern
-                         , full.names = TRUE
-  )
+  nc_files <- list.files(here("Data", "raw_climate"),
+                         pattern = pattern,
+                         full.names = TRUE)
   
-  combined <- terra::rast(nc_files)  # Does not work with a SpatRasterCollection
+  # Read first file to get dimensions
+  template_nc <- nc_open(nc_files[1])
+  dims <- template_nc$dim
+  nc_close(template_nc)
   
-  naming <- paste("climate_data", 
-                  collection,
-                  scenarios, 
-                  product_type,
-                  time_period,
-                  "combined.nc",
-                  sep="_")
+  # Create output file with same dimensions
+  outfile <- here::here("Output", paste("climate_data", 
+                                        collection,
+                                        paste(scenarios, collapse="_"),
+                                        product_type, 
+                                        time_period,
+                                        "combined.nc",
+                                        sep="_"))
   
-  # Write consolidated NetCDF
-  terra::writeCDF(combined
-                  , here::here("Output", naming)
-                  , prec = "double"  #Sets 64-bit floating point precision
-                  , compression = 9
-                  , overwrite = TRUE
-                  , atts = list(
-                      collection = collection,
-                      source = if(collection == "era5-x0.25") "ERA5" else "CMIP6",
-                      date_downloaded = as.character(Sys.Date())
-                      )
-                )
+  # Process each source file
+  merged_nc <- nc_create(outfile, force_v4 = TRUE)
   
-  message("Data consolidated...")
-  unlink(here("Data", "raw_climate", "*.nc"))
-
-  return(combined)
+  for(f in nc_files) {
+    src <- nc_open(f)
+    var_name <- names(src$var)[1] # Each file has one var
+    
+    # Copy variable with metadata
+    ncvar_put(merged_nc, var_name, ncvar_get(src))
+    var_atts <- ncatt_get(src, var_name)
+    for(att in names(var_atts)) {
+      ncatt_put(merged_nc, var_name, att, var_atts[[att]])
+    }
+    nc_close(src)
+  }
+  
+  # Add global attributes
+  ncatt_put(merged_nc, 0, "collection", collection)
+  ncatt_put(merged_nc, 0, "source", if(collection == "era5-x0.25") "ERA5" else "CMIP6") 
+  ncatt_put(merged_nc, 0, "date_created", as.character(Sys.Date()))
+  
+  nc_close(merged_nc)
+  
+  # Cleanup
+  unlink(nc_files)
+  
+  return(outfile)
 }
 
 

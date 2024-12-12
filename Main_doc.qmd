@@ -138,19 +138,16 @@ This gives area-weighted values that account for the changing grid cell size wit
 
 
 ```{r era5_data_a}
-# exist(era5_data_a)
-# exist(nuts1)
-# exist(nuts2)
+# Load data
+source("NUTS.R")
+r <- terra::rast(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1950-2022_combined.nc"))
+# crs(r) <- "EPSG:4326"
 
 # Check data, just opens connection
 ncdf4::nc_open(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1950-2022_combined.nc"))
 
-# Load data
-r <- terra::rast(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1950-2022_combined.nc"))
-crs(r) <- "EPSG:4326"
-
 # Get NUTS extent and transform to WGS84
-nuts_wgs84 <- project(ext(nuts1), from="EPSG:3035", to="EPSG:4326")
+nuts_wgs84 <- project(ext(nuts1), from = "EPSG:3035", to = "EPSG:4326")
 
 # Crop ERA5 extent, NUTS1 has the same extent as NUTS2
 era5_europe <- crop(r, nuts_wgs84)
@@ -159,20 +156,57 @@ era5_europe <- crop(r, nuts_wgs84)
 era5_data_nuts <- project(era5_europe, "EPSG:3035")
 
 # Create raster versions of NUTS using ERA5 as template, to perform raster-based zonal statistics afterwards
-nuts1_rast <- rasterize(nuts1, era5_data_nuts, field="NUTS_ID")  
-nuts2_rast <- rasterize(nuts2, era5_data_nuts, field="NUTS_ID")
+nuts1_rast <- rasterize(nuts1, era5_data_nuts, field = "NUTS_ID")  
+nuts2_rast <- rasterize(nuts2, era5_data_nuts, field = "NUTS_ID")
 
-# Latitudinal weighting
-weights <- terra::cellSize(era5_europe)
+# Latitudinal weighting, VERIFY!!!
+weights_org <- terra::cellSize(era5_europe)
+weights <- project(weights_org, "EPSG:3035")
 
-# Add administrative boundaries of nuts1 and nuts1 by masking
+# Add administrative boundaries of nuts1 and nuts1 by masking, using weights
 era5_data_a_nuts1 <- mask(era5_data_nuts * weights, nuts1) / mask(weights, nuts1)
 era5_data_a_nuts2 <- mask(era5_data_nuts * weights, nuts2) / mask(weights, nuts2)
 
-# Verify alignment
-compareGeom(era5_data_a_nuts1, era5_data_a_nuts2, (nuts1))
+# Verify alignment, masking reviews extent before operation
+# compareGeom(era5_data_a_nuts1, era5_data_a_nuts2)
 
 ```
+
+
+```{r era5_data_a_summary}
+# Summary stats across time periods
+# Mean for each NUTS1 region across all time steps
+means_nuts1 <- global(era5_data_a_nuts1, mean, na.rm = TRUE)
+
+# Basic temporal stats
+temporal_stats <- data.frame(
+  min = global(era5_data_a_nuts1, min, na.rm = TRUE),
+  max = global(era5_data_a_nuts1, max, na.rm = TRUE),
+  mean = global(era5_data_a_nuts1, mean, na.rm = TRUE),
+  sd = global(era5_data_a_nuts1, sd, na.rm = TRUE)
+)
+
+# Time series plot 
+values <- terra::as.data.frame(era5_data_a_nuts1, xy = TRUE)
+time_series <- ggplot(values, aes(x=seq_len(ncol(values)-2), y = value)) +
+  geom_line() +
+  theme_minimal() +
+  labs(title="ERA5 Time Series by NUTS1 Region",
+       x="Time Steps", 
+       y="Value")
+
+# Boxplot of values by region
+box_plot <- ggplot(values, aes(y=value)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title="Distribution of ERA5 Values",
+       y="Value")
+
+print(temporal_stats)
+print(time_series)
+print(box_plot)
+```
+
 
 ##  era5-x0.25_B:
 Dataset with one value per variable for each NUTS1/NUTS2 region. 
