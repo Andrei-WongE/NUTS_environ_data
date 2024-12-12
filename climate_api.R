@@ -101,15 +101,35 @@ get_climate_data <- function(collection,
     }
   }
   
-  # terra::writeCDF which has limitations for metadata handling
-    df <- terra::rast(local_file
-                      , lyrs = 1
-                      # , subds = variable_code
-                      )
-    
-    terra::set.names(df, paste(variable_code, scenario, sep="_"))
-    
-    return(df)
+  # Open NetCDF file
+  nc <- nc_open(local_file)
+  
+  # Get coordinates 
+  lon <- ncvar_get(nc, "lon")
+  lat <- ncvar_get(nc, "lat")
+  
+  # Read data and preserve metadata
+  data <- ncvar_get(nc, variable_code)
+  global_atts <- ncatt_get(nc, 0)
+  var_atts <- ncatt_get(nc, variable_code)
+  
+  r <- terra::rast(data, 
+                   crs = "epsg:4326",
+                   extent = c(min(lon), max(lon), min(lat), max(lat)))
+  
+  # Attach metadata as attributes
+  attr(r, "global_attributes") <- global_atts
+  attr(r, "variable_attributes") <- var_atts 
+  attr(r, "source_file") <- filename
+  attr(r, "scenario") <- scenario
+  attr(r, "variable") <- variable_code
+  
+  # Close connection
+  nc_close(nc)
+  
+  names(r) <- paste(variable_code, scenario, sep="_")
+  
+  return(r)
 }
 
 # Function to batch process climate data in parallel from AWS S3 -----
@@ -206,7 +226,9 @@ get_climate_data_batch_parallel <-  function(collection,
                                         sep="_"))
   
   # Process each source file
-  merged_nc <- nc_create(outfile, force_v4 = TRUE)
+  merged_nc <- nc_create(outfile
+                         , force_v4 = TRUE
+                         )
   
   for(f in nc_files) {
     src <- nc_open(f)
