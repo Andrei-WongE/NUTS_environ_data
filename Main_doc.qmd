@@ -109,7 +109,7 @@ Operation: GHS 1km grid using Mollewiede projection to ERAS5 25km grid using WGS
 # Dataset building
 
 ##  era5-x0.25_A:
-ERA5 data is provided at 0.25 x 0.25-degree resolution globally. This indicates it uses a regular latitude/longitude grid (WGS84/EPSG:4326).
+ERA5 data is provided at 0.25 x 0.25-degree resolution globally. This indicates it uses a regular latitude/longitude grid (WGS84/EPSG:4326).The 0.25-degree resolution means equal longitude spacing but decreasing latitude spacing towards poles
 
 Panel with waves 2010-2022 for each NUTS1/NUTS2 region. 
 Use population weights to aggregate the climate grisdcell level data.
@@ -140,40 +140,81 @@ This gives area-weighted values that account for the changing grid cell size wit
 ```{r era5_data_a}
 # Load data
 source("NUTS.R")
-r <- terra::rast(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1950-2022_combined.nc"))
-# crs(r) <- "EPSG:4326"
 
 # Check data, just opens connection
-ncdf4::nc_open(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1950-2022_combined.nc"))
+(nc <- ncdf4::nc_open(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1950-2022_combined.nc"))
+)
+nc_close(nc)
 
-# Get NUTS extent and transform to WGS84
-nuts_wgs84 <- project(ext(nuts1), from = "EPSG:3035", to = "EPSG:4326")
+r <- terra::rast(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1950-2022_combined.nc"))
+crs(r) <- "epsg:4326"
+
+# Set extent and resolution based on geotransform
+ext(r) <- c(spatial_info$extent)
+res(r) <- spatial_info$resolution
+
+# Set CRS for regular lat/lon grid
+crs(r) <- "EPSG:4326"
 
 # Crop ERA5 extent, NUTS1 has the same extent as NUTS2
-era5_europe <- crop(r, nuts_wgs84)
+era5_europe <- crop(r, ext(nuts1))
 
-# Project to match NUTS
-era5_data_nuts <- project(era5_europe, "EPSG:3035")
+# Create raster versions of NUTS using ERA5 as template, to perform raster-based zonal statistics afterwards and proper area weighting, using 2st layer as template
+nuts1_rast <- rasterize(nuts1, era5_europe[[1]], field = "NUTS_ID")  
+nuts2_rast <- rasterize(nuts2, era5_europe[[1]], field = "NUTS_ID")
 
-# Create raster versions of NUTS using ERA5 as template, to perform raster-based zonal statistics afterwards
-nuts1_rast <- rasterize(nuts1, era5_data_nuts, field = "NUTS_ID")  
-nuts2_rast <- rasterize(nuts2, era5_data_nuts, field = "NUTS_ID")
+# Latitudinal weighting, cellSize returns area of cells, accounting for latitude already
+weights <- cellSize(era5_europe[[1]], unit = "km")
 
-# Latitudinal weighting, VERIFY!!!
-weights_org <- terra::cellSize(era5_europe)
-weights <- project(weights_org, "EPSG:3035")
+# Create masked weight layers
+weights_nuts1 <- mask(weights, nuts1_rast)
+weights_nuts2 <- mask(weights, nuts2_rast)
 
-# Add administrative boundaries of nuts1 and nuts1 by masking, using weights
-era5_data_a_nuts1 <- mask(era5_data_nuts * weights, nuts1) / mask(weights, nuts1)
-era5_data_a_nuts2 <- mask(era5_data_nuts * weights, nuts2) / mask(weights, nuts2)
+# Apply weights to data
+era5_weighted <- era5_europe * weights
 
-# Verify alignment, masking reviews extent before operation
-# compareGeom(era5_data_a_nuts1, era5_data_a_nuts2)
+# Add administrative boundaries of nuts1 and nuts1 by masking, using weights to all layers
+era5_data_a_nuts1 <- mask(era5_weighted, nuts1_rast) / weights_nuts1
+era5_data_a_nuts2 <- mask(era5_weighted, nuts2_rast) / weights_nuts2
+
+# Slicing time dimension to 2010-2022
+
+# Population weighting
 
 ```
 
+```{r verify_era5_data_a}
 
-```{r era5_data_a_summary}
+# Verify results
+# Verify alignment, masking reviews extent before operation
+compareGeom(era5_data_a_nuts1, era5_data_a_nuts2)
+
+# Verify temporal dimension
+print(paste("Time steps in original:", nlyr(era5_europe)))
+print(paste("Time steps in NUTS1:", nlyr(era5_data_a_nuts1)))
+print(paste("Time steps in NUTS2:", nlyr(era5_data_a_nuts2)))
+
+print("Weight statistics by latitude:")
+# Sample weights at different latitudes to show variation
+y_coords <- seq(min(as.vector(ext(era5_europe)[3:4])), 
+                max(as.vector(ext(era5_europe)[3:4])), 
+                length.out=5)
+for(y in y_coords) {
+  p <- vect(cbind(0, y), crs=crs(weights))
+  w <- extract(weights, p)
+  print(paste("Latitude:", round(y, 2), "Weight:", round(w[1,2], 2)))
+}
+
+# Verify coverage
+print("\nVerifying NUTS coverage:")
+print(paste("Number of NUTS1 regions with data:", 
+           global(weights_nuts1, fun="notNA")[1,1]))
+print(paste("Number of NUTS2 regions with data:", 
+           global(weights_nuts2, fun="notNA")[1,1]))
+```
+
+
+```{r summary_era5_data_a}
 # Summary stats across time periods
 # Mean for each NUTS1 region across all time steps
 means_nuts1 <- global(era5_data_a_nuts1, mean, na.rm = TRUE)
@@ -230,9 +271,127 @@ Caveat:pr available timeperiod is 1991-2020.
 | Days with Precipitation >50mm | r50mm | Climatology | historical_era5 | annual | Ensemble_all | 1995-2014 | climatology |
 | Precipitation | pr | Climatology | historical_era5 | annual | Ensemble_all | 1995-2014 | climatology |
 
+```{r era5-x0.25_b}
+
+# Slice time of era5_data_c to 1995-2014 to match era5_data_b
+
+# Aggregate to create era5_data_b
+
+# Check data, just opens connection
+(nc <- ncdf4::nc_open(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1995-2014_combined.nc"))
+)
+nc_close(nc)
+
+r <- terra::rast(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1995-2014_combined.nc"))
+crs(r) <- "epsg:4326"
+
+# Set extent and resolution based on geotransform
+ext(r) <- c(spatial_info$extent)
+res(r) <- spatial_info$resolution
+
+# Set CRS for regular lat/lon grid
+crs(r) <- "EPSG:4326"
+
+# Crop ERA5 extent, NUTS1 has the same extent as NUTS2
+era5_europe <- crop(r, ext(nuts1))
+
+# Create raster versions of NUTS using ERA5 as template, to perform raster-based zonal statistics afterwards and proper area weighting, using 2st layer as template
+nuts1_rast <- rasterize(nuts1, era5_europe[[1]], field = "NUTS_ID")  
+nuts2_rast <- rasterize(nuts2, era5_europe[[1]], field = "NUTS_ID")
+
+# Latitudinal weighting, cellSize returns area of cells, accounting for latitude already
+weights <- cellSize(era5_europe[[1]], unit = "km")
+
+# Create masked weight layers
+weights_nuts1 <- mask(weights, nuts1_rast)
+weights_nuts2 <- mask(weights, nuts2_rast)
+
+# Apply weights to data
+era5_weighted <- era5_europe * weights
+
+# Add administrative boundaries of nuts1 and nuts1 by masking, using weights to all layers
+era5_data_a_nuts1 <- mask(era5_weighted, nuts1_rast) / weights_nuts1
+era5_data_a_nuts2 <- mask(era5_weighted, nuts2_rast) / weights_nuts2
+
+# Zonal aggregation per NUTS1 and NUTS2 units
+
+```
+
+
+##  cmip6-x0.25_A:
+
+
+We get the anolamy, which is then added to the current data (ERAS5) and then aggreated at NUTS2 and NUTS1 using future population projections
+
+CCKP presents projection as absolute values and/or as anomalies (from the historical reference period: 1995-2014 for CMIP6)
+Download the anomaly directly , just one point in time (climatology 2040-2059)
+
+
+
+| Variable | Description | Product | Scenarios | Model | Period | Type |
+|----------|------------|---------|-----------|--------|---------|-------|
+| tas | Mean temperature | anomaly | ssp245 & ssp585 | Ensemble_all | 2040-2059 | climatology |
+| cdd65 | Cooling degree days (temp > 18°C) | anomaly | ssp245 & ssp585 | Ensemble_all | 2040-2059 | climatology |
+| hdd65 | Heating degree days (temp < 18°C) | anomaly | ssp245 & ssp585 | Ensemble_all | 2040-2059 | climatology |
+| hd30 | Number of hot days (Tmax > 30°C) | anomaly | ssp245 & ssp585 | Ensemble_all | 2040-2059 | climatology |
+| hd35 | Number of very hot days (Tmax > 35°C) | anomaly | ssp245 & ssp585 | Ensemble_all | 2040-2059 | climatology |
+| fd | Number of frost days (Tmin < 0°C) | anomaly | ssp245 & ssp585 | Ensemble_all | 2040-2059 | climatology |
+| id | Number of ice days (Tmax < 0°C) | anomaly | ssp245 & ssp585 | Ensemble_all | 2040-2059 | climatology |
+| r20mm | Days with precipitation > 20mm | anomaly | ssp245 & ssp585 | Ensemble_all | 2040-2059 | climatology |
+| r50mm | Days with precipitation > 50mm | anomaly | ssp245 & ssp585 | Ensemble_all | 2040-2059 | climatology |
+| pr | Precipitation | anomaly | ssp245 & ssp585 | Ensemble_all | 2040-2059 | climatology |
+
+
+```{r}
+
+```
+
+## cmip6-x0.25_B:
+
+Las varaiables de precipitación usamos el cambio relativo, tenemos que calcularlo, nos falta los datos de base period simulation
+Relative change= anomaly climatology / simulation base climatology
+
+
+
+Future climate= climatology historic (1995-2014) + (CMIP climatology anomaly)
+
+Future population= GHS 2020 + (popcount 2040-2059 - popcount 1995-2014). Es la anomalía calculada en el punto 2.
+
+Con esas proyecciones, se puede agregar.
+
+ 
+
+Para las variables de precipitación (pr, r20mm, r50mm) hay que aplicar el growth rate 
+
+Future climate= climatology historic (1995-2014)* (1+ CMIP climatology anomaly/CMIP historic)
+
+Because climate simulations do not reproduce observed high-frequency weather extremes, and may exhibit biases relative to current climate, we do not directly compare simulated future exposures against their observed counterparts, but instead employ the 'delta' change method of computing differences in exposure between simulated current and future climates. Namely:
+
+![](Figures/download.png){.preview-image width="674" height="453"}
+![](Figures/download1.png){.preview-image width="674" height="453"}
 
 
 
 
+![](Figures/download2.png){.preview-image width="674" height="153"}
+ 
 
+Vamos a tener que hacer eso para el clima y la población (a nivel grid) para luego obtener population weighted climate projections a nivel NUTS. En nuestro caso:
+
+ 
+
+Future climate=Current climate (ERAS) + anomaly (CMIP)
+
+Future population= Current population (GHS)+ anomaly (WB NASA population data)
+
+| Collection | Variables | Product | Scenarios | Aggregation | Model | Time Period | Percentile | Product Type | Statistic |
+|-----------|-----------|---------|-----------|-------------|-------|-------------|------------|--------------|------------|
+| cmip6-x0.25_B | r20mm | Climatology | ssp245 & ssp585 | Annual | Ensemble_all | 1995-2014 | Median | Climatology | Mean number of days with precipitation > 20mm |
+| cmip6-x0.25_B | r50mm | Climatology | ssp245 & ssp585 | Annual | Ensemble_all | 1995-2014 | Median | Climatology | Mean number of days with precipitation > 50mm |
+| cmip6-x0.25_B | pr | Climatology | ssp245 & ssp585 | Annual | Ensemble_all | 1995-2014 | Median | Climatology | Mean Precipitation |
+
+
+```{r}
+# Wraggling per variable
+```
 

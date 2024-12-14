@@ -101,35 +101,66 @@ get_climate_data <- function(collection,
     }
   }
   
-  # Open NetCDF file
-  nc <- nc_open(local_file)
-  
-  # Get coordinates 
-  lon <- ncvar_get(nc, "lon")
-  lat <- ncvar_get(nc, "lat")
-  
-  # Read data and preserve metadata
-  data <- ncvar_get(nc, variable_code)
-  global_atts <- ncatt_get(nc, 0)
-  var_atts <- ncatt_get(nc, variable_code)
-  
-  r <- terra::rast(data, 
-                   crs = "epsg:4326",
-                   extent = c(min(lon), max(lon), min(lat), max(lat)))
-  
-  # Attach metadata as attributes
-  attr(r, "global_attributes") <- global_atts
-  attr(r, "variable_attributes") <- var_atts 
-  attr(r, "source_file") <- filename
-  attr(r, "scenario") <- scenario
-  attr(r, "variable") <- variable_code
-  
-  # Close connection
-  nc_close(nc)
-  
-  names(r) <- paste(variable_code, scenario, sep="_")
-  
-  return(r)
+  # # Open NetCDF file
+  # nc <- nc_open(local_file)
+  # 
+  # # Get coordinates
+  # lon <- ncvar_get(nc, "lon")
+  # lat <- ncvar_get(nc, "lat")
+  # 
+  # # Read data and preserve metadata
+  # data <- ncvar_get(nc, variable_code)
+  # global_atts <- ncatt_get(nc, 0)
+  # var_atts <- ncatt_get(nc, variable_code)
+  # 
+  # r <- terra::rast(data,
+  #                  crs = "epsg:4326",
+  #                  extent = c(min(lon), max(lon), min(lat), max(lat)))
+  # 
+  # # Attach metadata as attributes
+  # attr(r, "global_attributes") <- global_atts
+  # attr(r, "variable_attributes") <- var_atts
+  # attr(r, "source_file") <- filename
+  # attr(r, "scenario") <- scenario
+  # attr(r, "variable") <- variable_code
+  # 
+  # # Close connection
+  # nc_close(nc)
+  # 
+  # names(r) <- paste(variable_code, scenario, sep="_")
+  # 
+  return(local_file)
+}
+
+# function for saving and reading metadata From ErikKusch 
+# https://github.com/rspatial/terra/issues/1549
+
+Meta.NC <- function(NC, FName, Attrs, Write = FALSE, Read = FALSE){
+  ## Writing metadata
+  if(Write){
+    writeCDF(x = NC, filename = FName , overwrite = TRUE)
+    
+    nc <- nc_open(FName, write = TRUE)
+    for(name in names(Attrs)) {
+      ncatt_put(nc, 0, name, Attrs[[name]])
+    }
+    nc_close(nc)
+  }
+  ## Reading metadata
+  if(Read){
+    nc <- nc_open(FName)
+    # Retrieve custom metadata
+    Meta <- lapply(names(Attrs), FUN = function(name){
+      ncatt_get(nc, 0, name)$value
+    })
+    # Close the NetCDF file
+    nc_close(nc)
+    Meta_vec <- unlist(Meta)
+    names(Meta_vec) <- names(Attrs)
+    terra::metags(NC) <- Meta_vec
+  }
+  ## return object
+  return(NC)
 }
 
 # Function to batch process climate data in parallel from AWS S3 -----
@@ -211,50 +242,101 @@ get_climate_data_batch_parallel <-  function(collection,
                          pattern = pattern,
                          full.names = TRUE)
   
-  # Read first file to get dimensions
-  template_nc <- nc_open(nc_files[1])
-  dims <- template_nc$dim
-  nc_close(template_nc)
+  r <- terra::rast(nc_files)
   
-  # Create output file with same dimensions
-  outfile <- here::here("Output", paste("climate_data", 
+  # Get metadata from first file
+  src <- nc_open(nc_files[1])
+  attrs <- ncatt_get(src, 0)
+  nc_close(src)
+  
+  outfile <- here::here("Output", paste("climate_data",
                                         collection,
                                         paste(scenarios, collapse="_"),
-                                        product_type, 
+                                        product_type,
                                         time_period,
                                         "combined.nc",
-                                        sep="_"))
-  
-  # Process each source file
-  merged_nc <- nc_create(outfile
-                         , force_v4 = TRUE
-                         )
-  
-  for(f in nc_files) {
-    src <- nc_open(f)
-    var_name <- names(src$var)[1] # Each file has one var
-    
-    # Copy variable with metadata
-    ncvar_put(merged_nc, var_name, ncvar_get(src))
-    var_atts <- ncatt_get(src, var_name)
-    for(att in names(var_atts)) {
-      ncatt_put(merged_nc, var_name, att, var_atts[[att]])
-    }
-    nc_close(src)
-  }
-  
-  # Add global attributes
-  ncatt_put(merged_nc, 0, "collection", collection)
-  ncatt_put(merged_nc, 0, "source", if(collection == "era5-x0.25") "ERA5" else "CMIP6") 
-  ncatt_put(merged_nc, 0, "date_created", as.character(Sys.Date()))
-  
-  nc_close(merged_nc)
+                                        sep="_")) 
+
+  # Use Meta.NC function to write with metadata
+  merged_nc <- Meta.NC(NC = r, 
+               FName = outfile, 
+               Attrs = attrs,
+               Write = TRUE)
   
   # Cleanup
   unlink(nc_files)
+  gc()
   
-  return(outfile)
+  message("Created output file: ", outfile)
+  
+  return(merged_nc)
 }
+
+# # Write to single NetCDF
+# merged_nc <- terra::writeCDF(r, outfile)
+# 
+# # Get back metadata from original
+# nc <- nc_open(nc_files[1])
+# r <- terra::rast(nc_files)
+# 
+# # Read all files as SpatRaster, but looses some metadat attributes
+# terra::writeCDF(r, outfile)
+# nc_close(nc)
+
+# # Open first file and get variable directly
+# template_nc <- nc_open(nc_files[1])
+# dims <- template_nc$dim
+# 
+# # Define variables with dimensions and attributes
+# var_defs <- list()
+# for(f in nc_files) {
+#   src <- nc_open(f)
+#   var_name <- names(src$var)[1]
+#   var_defs[[var_name]] <- ncvar_def(var_name, 
+#                                     src$var[[1]]$units,
+#                                     dims)
+#   nc_close(src)
+# }
+# 
+# nc_close(template_nc)
+# 
+# # Add global attributes
+# londim <- ncdim_def("lon", "degrees_east", lon) 
+# latdim <- ncdim_def("lat", "degrees_north", lat)
+# timedim <- ncdim_def("time", tunits, time, unlim = TRUE)
+# 
+# # Explicitly place unlimited dimension last
+# var_defs <- lapply(nc_files, function(f) {
+#   src <- nc_open(f)
+#   var_name <- names(src$var)[1]
+#   var_def <- ncvar_def(var_name, 
+#                        src$var[[1]]$units,
+#                        list(timedim,londim, latdim))  # Consistent order
+#   nc_close(src)
+#   return(var_def)
+# })  
+# 
+# # Create file
+# merged_nc <- nc_create(outfile, var_defs)
+# 
+# # Copy attributes
+# for(f in nc_files) {
+#   src <- nc_open(f)
+#   
+#   var_name <- names(src$var)[1]
+#   ncvar_put(merged_nc, var_name, ncvar_get(src))
+#   var_atts <- ncatt_get(src, var_name)
+#   
+#   for(att in names(var_atts)) {
+#     ncatt_put(merged_nc, var_name, att, var_atts[[att]])
+#   }
+#   
+#   nc_close(src)
+# }
+# 
+# ncatt_put(merged_nc, 0, "collection", collection)
+# ncatt_put(merged_nc, 0, "source", if(collection == "era5-x0.25") "ERA5" else "CMIP6")
+# ncatt_put(merged_nc, 0, "date_created", as.character(Sys.Date()))
 
 
 # Test function with error handling

@@ -38,15 +38,14 @@ dir.create(here("Data", "nuts"), recursive = TRUE)
 ## Loading data --------
 require(nuts)
 
-nuts <- vect(here("Data", "nuts","NUTS_RG_20M_2016_3035.geojson"))
+nuts <- vect(here("Data", "nuts","NUTS_RG_20M_2016_4326.geojson"))
 
 glimpse(nuts)
 
 # #  A SpatVector 2,016 x 8
 # #  Geometry type: Polygons
-# #  Projected CRS: ETRS89-extended / LAEA Europe (EPSG:3035)
-# #  CRS projection units: meter <m>
-# #  Extent (x / y) : ([-2,823,672 / 10,026,276] , [-3,076,354 /  5,410,788])
+#  Geodetic CRS: lon/lat WGS 84 (EPSG:4326)
+#  Extent (x / y) : ([63° 5' 17.71" W / 55° 50' 17.09" E] , [21° 23' 26.75" S / 71° 7' 5.29" N])
 # 
 # $ NUTS_ID    <chr> "ES", "FI", "IS", "PT2", "FR", "HR", "HU", "AL", "AT", "B…
 # $ LEVL_CODE  <int> 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, …
@@ -64,8 +63,8 @@ nuts1 <- nuts[nuts$LEVL_CODE == 1,]
 nuts2 <- nuts[nuts$LEVL_CODE == 2,]
 
 # Transform coordinate systems
-nuts1_vect <- terra::project(nuts1, "epsg:4326")
-nuts2_vect <- terra::project(nuts2, "epsg:4326")
+# nuts1_vect <- terra::project(nuts1, "epsg:4326")
+# nuts2_vect <- terra::project(nuts2, "epsg:4326")
 
-crs(nuts1_vect)==crs(nuts2_vect)
+crs(nuts1)==crs(nuts2)
 

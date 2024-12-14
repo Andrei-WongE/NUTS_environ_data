@@ -26,6 +26,9 @@
 # 4. 
 
 ## Loading data ----
+
+source("Master_script.R")
+
 require(httr)
 require(jsonlite)
 require(dplyr)
@@ -36,12 +39,13 @@ require(progressr)
 require(future)
 require(furrr)
 require(future.apply)
+require(ncdf4)
 
 dir.create(here("Output", "climate_data"), recursive = TRUE)
 dir.create(here("Data", "raw_climate"), recursive = TRUE)
 
 source("climate_api.R")
-source("Master_script.R")
+
 
 # Get data for all variables and scenarios
 
@@ -154,6 +158,25 @@ cmip6_data_b <- get_climate_data_batch_parallel(
   percentile = "median",
   statistic = "mean"
 )
+
+
+# Open first file
+template_nc <- nc_open(nc_files[1])
+
+# Print full file information
+print(template_nc)  
+
+# Check global attributes
+global_atts <- ncatt_get(template_nc, 0)
+print(global_atts)
+
+# Check variable attributes including CRS
+var_name <- names(template_nc$var)[1]
+var_atts <- ncatt_get(template_nc, var_name)
+print(var_atts)
+
+# Close file
+nc_close(template_nc)
 
 # results <- test_parallel_api("FRA")
 # 
