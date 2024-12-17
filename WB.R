@@ -159,6 +159,35 @@ cmip6_data_b <- get_climate_data_batch_parallel(
   statistic = "mean"
 )
 
+pop_x0.25_hist  <- get_climate_data(
+  collection = "pop-x0.25",
+  variable_code =  "popcount",
+  scenario = "historical",
+  product = "climatology", 
+  aggregation = "annual",
+  time_period = "1995-2014",
+  product_type = "climatology"
+)
+
+pop_x0.25_future  <- get_climate_data(
+  collection = "pop-x0.25",
+  variable_code =  "popcount",
+  scenario = "ssp245",
+  product = "climatology", 
+  aggregation = "annual",
+  time_period = "2040-2059",
+  product_type = "climatology"
+)
+
+pop_x0.25_future  <- get_climate_data(
+  collection = "pop-x0.25",
+  variable_code =  "popcount",
+  scenario = "ssp585",
+  product = "climatology", 
+  aggregation = "annual",
+  time_period = "2040-2059",
+  product_type = "climatology"
+)
 
 # Open first file
 template_nc <- nc_open(nc_files[1])

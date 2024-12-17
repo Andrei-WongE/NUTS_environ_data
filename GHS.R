@@ -164,7 +164,8 @@ BASE_URL <- "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_POP_GLOBE
 YEARS <- c(1975, 1980, 1985, 1990, 1995, 2000, 2005, 2010, 2015, 2020, 2025, 2030)
 
 # Define Europe extent
-europe_extent <- ext(-11, 32, 35, 65)  # xmin, xmax, ymin, ymax
+# europe_extent <- ext(-11, 32, 35, 65)  # xmin, xmax, ymin, ymax
+europe_extent <- ext(nuts1)
 
 # Functions
 download_year <- function(year) {
@@ -960,3 +961,53 @@ validation <- fread(here("Data", "ghs", "validation_summary.csv"))
 # 11:            276.11%                28
 # 12:            276.15%                28
 
+# 4. Stack population raster ----
+# Stack relevant years
+pop_stack <- stack( raster(here("Data", "ghs", "pop_data_eu_2010.tif"))
+                    , raster(here("Data", "ghs", "pop_data_eu_2015.tif"))
+                    , raster(here("Data", "ghs", "pop_data_eu_2020.tif")) 
+                  )
+
+# Calculate annual arithmetic constant increase
+rate_2010_2015 <- (pop_stack[[2]] - pop_stack[[1]]) / 5
+rate_2015_2020 <- (pop_stack[[3]] - pop_stack[[2]]) / 5
+
+summary(rate_2010_2015)
+summary(rate_2015_2020)
+
+# Interpolate years
+pop_2011 <- pop_stack[[1]] + rate_2010_2015
+pop_2012 <- pop_stack[[1]] + (rate_2010_2015 * 2)
+pop_2013 <- pop_stack[[1]] + (rate_2010_2015 * 3)
+pop_2014 <- pop_stack[[1]] + (rate_2010_2015 * 4)
+
+pop_2016 <- pop_stack[[2]] + rate_2015_2020
+pop_2017 <- pop_stack[[2]] + (rate_2015_2020 * 2)
+pop_2018 <- pop_stack[[2]] + (rate_2015_2020 * 3)
+pop_2019 <- pop_stack[[2]] + (rate_2015_2020 * 4)
+
+# Stack results
+pop_raster <- stack(pop_stack[[1]], pop_2011, pop_2012, pop_2013, pop_2014,
+                pop_stack[[2]], pop_2016, pop_2017, pop_2018, pop_2019,
+                pop_stack[[3]])
+
+names(pop_raster) <- paste0("pop_", 2010:2020)
+
+
+# Review 
+# pop_df <- as.data.frame(pop_raster)
+# 
+# pop_long <- pivot_longer(pop_df,
+#                          cols = everything(),
+#                          names_to = "year",
+#                          values_to = "population") %>%
+#   mutate(year = as.numeric(gsub("pop_", "", year)))
+# 
+# # Plot
+# ggplot(pop_long, aes(x = year, y = population)) +
+#   geom_boxplot(aes(group = year)) +
+#   scale_y_log10() +
+#   theme_minimal() +
+#   labs(x = "Year",
+#        y = "Population (log scale)",
+#        title = "Population Distribution 2010-2020")
