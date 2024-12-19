@@ -148,20 +148,24 @@ Code process:
 
 Each step preserves spatial relationships while accounting for cell area variations by latitude.
 
+This implements weighted mean as:
+Σ(value × lat_weight × pop_weight) / Σ(lat_weight × pop_weight)
+
 
 ```{r era5_data_a}
+#| echo: false
+
 # Load data
 source("NUTS.R")
 
 # Check data, just opens connection
-(nc <- ncdf4::nc_open(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1950-2022_combined.nc"))
-)
-nc_close(nc)
+(nc <- ncdf4::nc_open(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1950-2022_combined.nc")))
 
+# Open ERAS5 file
 r <- terra::rast(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1950-2022_combined.nc"))
 crs(r) <- "EPSG:4326"
 
-# Slicing time dimension to 2010-2022
+# Slicing time dimension to 2010-2022 eras5
 subset_time <- terra::time(r) >= as.Date("2010-01-01")
 r <- r[[subset_time]]
 
@@ -169,47 +173,67 @@ r <- r[[subset_time]]
 era5_europe <- crop(r, ext(nuts1))
 
 # Create raster versions of NUTS using ERA5 as template, to perform raster-based zonal statistics afterwards and proper area weighting, using 1st layer as template
-nuts1_rast <- rasterize(nuts1, era5_europe[[1]], field = "NUTS_ID")  
+nuts1_rast <- rasterize(nuts1, era5_europe[[1]], field = "NUTS_ID")
 nuts2_rast <- rasterize(nuts2, era5_europe[[1]], field = "NUTS_ID")
 
 # Latitudinal weighting, cellSize returns area of cells, accounting for latitude already
 # https://stackoverflow.com/questions/68308376/why-do-terracellsize-and-rasterarea-produce-different-estimates-of-raste
 weights <- terra::cellSize(era5_europe[[1]], unit = "km")
 
-# Apply logitudinal weights to eras5 data
-era5_weighted <- era5_europe * weights
+# Process population data to align extend and resolution of era5
+pop_raster <- terra::rast(here("Output","pop_raster_2010_2020.tif"))
 
-# Create masked weight layers of eras5 to NUTS boundaries
-era5_data_nuts1  <- mask(era5_weighted, nuts1_rast)
-era5_data_nuts2  <- mask(era5_weighted, nuts2_rast)
+# Initialize lists
+era5_data_a_nuts1_w <- list()
+era5_data_a_nuts2_w <- list()
 
-# Process population data to match extent and resolution of era5
-pop <- extend(pop_raster, ext(era5_europe))
-
-pop_nuts1 <- list()
-pop_nuts2 <- list()
-
+# Apply yearly NUTS level latitude and population weights for each cell of the layers of eras5 data
 for(year in 2010:2020) {
   
-   pop_year <- pop[[paste0("pop_", year)]]
+  # Extract population for specific year
+  pop_year <- pop_raster[[paste0("pop_", year)]]
+  
+  # Resample population to match ERA5 exactly
+  pop_era5 <- terra::resample(pop_year, era5_europe[[1]], method = "sum")
+  
+  # Ensure extent matches exactly
+  ext(pop_era5) <- ext(era5_europe[[1]])
+  
+  # Mask population to NUTS boundaries
+  pop_nuts1 <- mask(pop_era5, nuts1_rast, updatevalue = 0)
+  pop_nuts2 <- mask(pop_era5, nuts2_rast, updatevalue = 0)
+  
+  # Apply latitute weights to ERA5 data
+  era5_weighted <- era5_europe * weights
+  
+  # Mask weighted ERA5 data to NUTS boundaries
+  era5_data_nuts1 <- mask(era5_weighted, nuts1_rast)
+  era5_data_nuts2 <- mask(era5_weighted, nuts2_rast)
+  
+  # Calculate weighted population means for each layer
+  nuts1_means <- lapply(1:nlyr(era5_data_nuts1), function(i) {
     
-   pop_era5 <- aggregate(pop_year, fact = round(0.25/0.008333), fun = "sum")
-
-   pop_nuts1[[year]] <- mask(pop_era5, nuts1_rast)
-   pop_nuts2[[year]] <- mask(pop_era5, nuts2_rast)
-
+    weighted.mean(era5_data_nuts1[[i]], pop_nuts1, na.rm = TRUE)
+  })
+  
+  nuts2_means <- lapply(1:nlyr(era5_data_nuts2), function(i) {
+    
+    weighted.mean(era5_data_nuts2[[i]], pop_nuts2, na.rm = TRUE)
+  })
+  
+  # Store results
+  era5_data_a_nuts1_w[[as.character(year)]] <- do.call(c, nuts1_means)
+  era5_data_a_nuts2_w[[as.character(year)]] <- do.call(c, nuts2_means)
 }
 
-# Apply yearly NUTS level population weights to eras5 data
-era5_data_a_nuts1_w <-mapply(function(year) {
-  
-  weighted.mean(era5_data_nuts1, pop_nuts1[[year]])
-}, 2010:2020)
+# Export results as SpatRaster objects
+terra::writeRaster(rast(era5_data_a_nuts1_w), 
+                  here("Output", "era5_data_a_nuts1_w.tif"), 
+                  overwrite = TRUE)
 
-era5_data_a_nuts2_w <- mapply(function(year) {
-  
-  weighted.mean(era5_data_nuts2, pop_nuts2[[year]])
-}, 2010:2020)
+terra::writeRaster(rast(era5_data_a_nuts2_w), 
+                  here("Output", "era5_data_a_nuts2_w.tif"), 
+                  overwrite = TRUE)
 
 ```
 
@@ -217,12 +241,12 @@ era5_data_a_nuts2_w <- mapply(function(year) {
 
 # Verify results
 # Verify alignment, masking reviews extent
-compareGeom(era5_data_a_nuts1_w, era5_data_a_nuts2_w)
+compareGeom(rast(era5_data_a_nuts1_w), rast(era5_data_a_nuts2_w))
 
 # Verify temporal dimension
 print(paste("Time steps in original:", nlyr(era5_europe)))
-print(paste("Time steps in NUTS1:", nlyr(era5_data_a_nuts1_w)))
-print(paste("Time steps in NUTS2:", nlyr(era5_data_a_nuts2_w)))
+print(paste("Time steps in NUTS1:", nlyr(rast(era5_data_a_nuts1_w))))
+print(paste("Time steps in NUTS2:", nlyr(rast(era5_data_a_nuts2_w))))
 
 print("Weight statistics by latitude:")
 # Sample weights at different latitudes to show variation
@@ -238,9 +262,9 @@ for(y in y_coords) {
 # Verify coverage
 print("\nVerifying NUTS coverage:")
 print(paste("Number of NUTS1 regions with data:", 
-           global(era5_data_a_nuts1_w, fun="notNA")[1,1]))
+           global(rast(era5_data_a_nuts1_w), fun="notNA")[1,1]))
 print(paste("Number of NUTS2 regions with data:", 
-           global(era5_data_a_nuts2_w, fun="notNA")[1,1]))
+           global(rast(era5_data_a_nuts2_w), fun="notNA")[1,1]))
 ```
 
 
@@ -302,66 +326,97 @@ Caveat:pr available timeperiod is 1991-2020.
 | Precipitation | pr | Climatology | historical_era5 | annual | Ensemble_all | 1995-2014 | climatology |
 
 ```{r era5-x0.25_b}
+s <- terra::rast(here("Output", "climate_data_era5-x0.25_historical_era5_climatology_1991-2020_combined.nc"
+))
+crs(s) <- "epsg:4326"
 
-# Slice time of era5_data_c to 1995-2014 to match era5_data_b
+"climatology-popcount-annual-mean_pop-x0.25_gpw-v4-rev11-historical_climatology_mean_1995-2014.nc"
+  
+# Slicing time dimension to 1991-2020 eras5
+start_date <- as.Date("1991-01-01")
+end_date <- as.Date("2020-12-31")
+subset_time <- terra::time(s) >= start_date & terra::time(s) <= end_date
+s <- s[[subset_time]]
 
 # Aggregate to create era5_data_b
-
-# Check data, just opens connection
-(nc <- ncdf4::nc_open(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1995-2014_combined.nc"))
-)
-nc_close(nc)
-
 r <- terra::rast(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1995-2014_combined.nc"))
 crs(r) <- "epsg:4326"
 
-# Set extent and resolution based on geotransform
-ext(r) <- c(spatial_info$extent)
-res(r) <- spatial_info$resolution
+r <- terra::rast((r, s)
 
-# Set CRS for regular lat/lon grid
-crs(r) <- "EPSG:4326"
+# Slice time of era5_data_c to 1995-2014 to match era5_data_b
+start_date <- as.Date("1995-01-01")
+end_date <- as.Date("2014-12-31")
+subset_time <- terra::time(r) >= start_date & terra::time(r) <= end_date
+r <- r[[subset_time]]
 
-# Crop ERA5 extent, NUTS1 has the same extent as NUTS2
+# Crop ERA5 extent to NUTS exent, NUTS1 has the same extent as NUTS2
 era5_europe <- crop(r, ext(nuts1))
 
-# Create raster versions of NUTS using ERA5 as template, to perform raster-based zonal statistics afterwards and proper area weighting, using 2st layer as template
-nuts1_rast <- rasterize(nuts1, era5_europe[[1]], field = "NUTS_ID")  
+# Create raster versions of NUTS using ERA5 as template, to perform raster-based zonal statistics afterwards and proper area weighting, using 1st layer as template
+nuts1_rast <- rasterize(nuts1, era5_europe[[1]], field = "NUTS_ID")
 nuts2_rast <- rasterize(nuts2, era5_europe[[1]], field = "NUTS_ID")
 
 # Latitudinal weighting, cellSize returns area of cells, accounting for latitude already
-weights <- cellSize(era5_europe[[1]], unit = "km")
+# https://stackoverflow.com/questions/68308376/why-do-terracellsize-and-rasterarea-produce-different-estimates-of-raste
+weights <- terra::cellSize(era5_europe[[1]], unit = "km")
 
-# Create masked weight layers
-weights_nuts1 <- mask(weights, nuts1_rast)
-weights_nuts2 <- mask(weights, nuts2_rast)
+# Process population data to align extend and resolution of era5
+pop_raster <- terra::rast(here("Output","pop_raster_2010_2020.tif"))
 
-# Apply weights to data
-era5_weighted <- era5_europe * weights
+# Initialize lists
+era5_data_a_nuts1_w <- list()
+era5_data_a_nuts2_w <- list()
 
-# Add administrative boundaries of nuts1 and nuts1 by masking, using weights to all layers
-era5_data_a_nuts1 <- mask(era5_weighted, nuts1_rast) / weights_nuts1
-era5_data_a_nuts2 <- mask(era5_weighted, nuts2_rast) / weights_nuts2
-
-# Zonal aggregation per NUTS1 and NUTS2 units
-aggregate_by_nuts <- function(data, nuts_rast, nuts_ids) {
+# Apply yearly NUTS level latitude and population weights for each cell of the layers of eras5 data
+for(year in 2010:2020) {
   
-   regional_means <- lapply(nuts_ids, function(id) {
-       region_mask <- nuts_rast == id
-       
-       # Latitudinal weighting
-       region_data <- mask(data, region_mask)
-       region_weights <- mask(weights, region_mask)
-       
-       # Variable mean per region
-       weighted.mean(region_data, w = region_weights, na.rm = TRUE)
-   })
-   names(regional_means) <- nuts_ids
-   return(regional_means)
+  # Extract population for specific year
+  pop_year <- pop_raster[[paste0("pop_", year)]]
+  
+  # Resample population to match ERA5 exactly
+  pop_era5 <- terra::resample(pop_year, era5_europe[[1]], method = "sum")
+  
+  # Ensure extent matches exactly
+  ext(pop_era5) <- ext(era5_europe[[1]])
+  
+  # Mask population to NUTS boundaries
+  pop_nuts1 <- mask(pop_era5, nuts1_rast, updatevalue = 0)
+  pop_nuts2 <- mask(pop_era5, nuts2_rast, updatevalue = 0)
+  
+  # Apply latitute weights to ERA5 data
+  era5_weighted <- era5_europe * weights
+  
+  # Mask weighted ERA5 data to NUTS boundaries
+  era5_data_nuts1 <- mask(era5_weighted, nuts1_rast)
+  era5_data_nuts2 <- mask(era5_weighted, nuts2_rast)
+  
+  # Calculate weighted population means for each layer
+  nuts1_means <- lapply(1:nlyr(era5_data_nuts1), function(i) {
+    
+    weighted.mean(era5_data_nuts1[[i]], pop_nuts1, na.rm = TRUE)
+  })
+  
+  nuts2_means <- lapply(1:nlyr(era5_data_nuts2), function(i) {
+    
+    weighted.mean(era5_data_nuts2[[i]], pop_nuts2, na.rm = TRUE)
+  })
+  
+  # Store results
+  era5_data_a_nuts1_w[[as.character(year)]] <- do.call(c, nuts1_means)
+  era5_data_a_nuts2_w[[as.character(year)]] <- do.call(c, nuts2_means)
 }
 
-nuts1_regional <- aggregate_by_nuts(era5_data_b_nuts1_w, nuts1_rast, unique(nuts1$NUTS_ID), weights)
-nuts2_regional <- aggregate_by_nuts(era5_data_b_nuts2_w, nuts2_rast, unique(nuts2$NUTS_ID), weights)
+
+
+# Export results as SpatRaster objects
+terra::writeRaster(rast(era5_data_a_nuts1_w), 
+                  here("Output", "era5_data_a_nuts1_w.tif"), 
+                  overwrite = TRUE)
+
+terra::writeRaster(rast(era5_data_a_nuts2_w), 
+                  here("Output", "era5_data_a_nuts2_w.tif"), 
+                  overwrite = TRUE)
 ```
 
 

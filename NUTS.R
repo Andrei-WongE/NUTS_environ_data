@@ -62,9 +62,13 @@ terra::values(nuts) %>% View()
 nuts1 <- nuts[nuts$LEVL_CODE == 1,]
 nuts2 <- nuts[nuts$LEVL_CODE == 2,]
 
-# Transform coordinate systems
-# nuts1_vect <- terra::project(nuts1, "epsg:4326")
-# nuts2_vect <- terra::project(nuts2, "epsg:4326")
-
 crs(nuts1)==crs(nuts2)
+
+# Verifying if NUTS_ID is unique
+length(unique(nuts1$NUTS_ID)) == nrow(nuts1)
+length(unique(nuts2$NUTS_ID)) == nrow(nuts2)
+
+# Verifying if NUTS_ID has missing valuess or empty values
+sum(is.na(nuts1$NUTS_ID)) == 0
+sum(is.na(nuts2$NUTS_ID)) == 0
 

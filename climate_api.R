@@ -132,36 +132,7 @@ get_climate_data <- function(collection,
   return(local_file)
 }
 
-# function for saving and reading metadata From ErikKusch 
-# https://github.com/rspatial/terra/issues/1549
-
-Meta.NC <- function(NC, FName, Attrs, Write = FALSE, Read = FALSE){
-  ## Writing metadata
-  if(Write){
-    writeCDF(x = NC, filename = FName , overwrite = TRUE)
-    
-    nc <- nc_open(FName, write = TRUE)
-    for(name in names(Attrs)) {
-      ncatt_put(nc, 0, name, Attrs[[name]])
-    }
-    nc_close(nc)
-  }
-  ## Reading metadata
-  if(Read){
-    nc <- nc_open(FName)
-    # Retrieve custom metadata
-    Meta <- lapply(names(Attrs), FUN = function(name){
-      ncatt_get(nc, 0, name)$value
-    })
-    # Close the NetCDF file
-    nc_close(nc)
-    Meta_vec <- unlist(Meta)
-    names(Meta_vec) <- names(Attrs)
-    terra::metags(NC) <- Meta_vec
-  }
-  ## return object
-  return(NC)
-}
+source("auxilary_functions.R")
 
 # Function to batch process climate data in parallel from AWS S3 -----
 get_climate_data_batch_parallel <-  function(collection,
@@ -242,26 +213,51 @@ get_climate_data_batch_parallel <-  function(collection,
                          pattern = pattern,
                          full.names = TRUE)
   
-  r <- terra::rast(nc_files)
-  
-  # Get metadata from first file
-  src <- nc_open(nc_files[1])
-  attrs <- ncatt_get(src, 0)
-  nc_close(src)
-  
-  outfile <- here::here("Output", paste("climate_data",
+  # Create output file with same dimensions
+  outfile <- here::here("Output", paste("climate_data", 
                                         collection,
                                         paste(scenarios, collapse="_"),
-                                        product_type,
+                                        product_type, 
                                         time_period,
                                         "combined.nc",
-                                        sep="_")) 
-
-  # Use Meta.NC function to write with metadata
-  merged_nc <- Meta.NC(NC = r, 
-               FName = outfile, 
-               Attrs = attrs,
-               Write = TRUE)
+                                        sep="_"))
+  
+  rast_stack  <- terra::rast(nc_files)
+  
+  # In case of more than one scenario
+  variables <- if(length(scenarios) > 1) {
+    
+    # Function to extract variable and scenario from filename
+    extract_var_scenario <- function(filename) {
+      
+      # Split the filename by underscores
+      parts <- unlist(strsplit(basename(filename), "_"))
+      
+      # Extract variable (second part of first segment)
+      variable <- unlist(strsplit(parts[1], "-"))[2]
+      
+      # Extract scenario (from the segment containing "ssp")
+      scenario_segment <- grep("ssp", parts, value = TRUE)
+      scenario <- sub("ensemble-all-", "", scenario_segment)
+      
+      # Combine variable and scenario
+      paste0(variable, "_", scenario)
+    }
+    
+   sapply(nc_files, extract_var_scenario)
+    
+  } else {
+    
+    variables
+  }
+  
+  writeCDF(rast_stack
+           , outfile
+           , varname = variables
+           , overwrite = TRUE
+           , compression = 4
+           , verbose = TRUE
+           )
   
   # Cleanup
   unlink(nc_files)
@@ -269,7 +265,7 @@ get_climate_data_batch_parallel <-  function(collection,
   
   message("Created output file: ", outfile)
   
-  return(merged_nc)
+  return(rast_stack)
 }
 
 # # Write to single NetCDF

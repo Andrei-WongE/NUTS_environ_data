@@ -49,44 +49,45 @@ source("climate_api.R")
 
 # Get data for all variables and scenarios
 
-## cmip6-x0.25-----
+# ## cmip6-x0.25-----
+# 
+# cmip6 <- get_climate_data_batch_parallel(variables = c("tas", "cdd65"
+#                                                        , "hdd65","hd30"
+#                                                        , "hd35", "fd"
+#                                                        , "id", "r20mm")                              
+#                                          ,collection = "cmip6-x0.25"
+#                                          ,scenarios = c("ssp245", "ssp585")
+#                                          ,product = "climatology"
+#                                          ,aggregation = "annual"
+#                                          ,time_period = "1950-2022"
+#                                          ,product_type = "timeseries"
+#                                          ,model = "ensemble-all"
+#                                          ,percentile = "median"
+#                                          ,statistic = "mean"
+#                                          ,chunk_size = 3
+#                                          )
+# 
+# ncdf4::nc_open(here("Output", "climate_data_cmip6-x0.25_ssp245_ssp585_combined.nc"))
+# raster::brick(here("Output", "climate_data_cmip6-x0.25_ssp245_ssp585_combined.nc"))
+# 
+# ## era5-x0.25-----
+# eras5 <- get_climate_data_batch_parallel(collection = "era5-x0.25"
+#                                          ,variables = c("tas", "pr", "tasmax"
+#                                                        , "tasmin", "fd")
+#                                          ,scenarios = "historical_era5"
+#                                          ,product = "climatology"
+#                                          ,aggregation = "annual"
+#                                          ,time_period = "1950-2022"
+#                                          ,product_type = "timeseries"
+#                                          ,model = "ensemble-all"
+#                                          ,percentile = "median"
+#                                          ,statistic = "mean"
+#                                          ,chunk_size = 3
+#                                         )
+# 
+# ncdf4::nc_open(here("Output", "climate_data_cmip6-x0.25_ssp245_ssp585_combined.nc"))
+# raster::brick(here("Output", "climate_data_cmip6-x0.25_ssp245_ssp585_combined.nc"))
 
-cmip6 <- get_climate_data_batch_parallel(variables = c("tas", "cdd65"
-                                                       , "hdd65","hd30"
-                                                       , "hd35", "fd"
-                                                       , "id", "r20mm")                              
-                                         ,collection = "cmip6-x0.25"
-                                         ,scenarios = c("ssp245", "ssp585")
-                                         ,product = "climatology"
-                                         ,aggregation = "annual"
-                                         ,time_period = "1950-2022"
-                                         ,product_type = "timeseries"
-                                         ,model = "ensemble-all"
-                                         ,percentile = "median"
-                                         ,statistic = "mean"
-                                         ,chunk_size = 3
-                                         )
-
-ncdf4::nc_open(here("Output", "climate_data_cmip6-x0.25_ssp245_ssp585_combined.nc"))
-raster::brick(here("Output", "climate_data_cmip6-x0.25_ssp245_ssp585_combined.nc"))
-
-## era5-x0.25-----
-eras5 <- get_climate_data_batch_parallel(collection = "era5-x0.25"
-                                         ,variables = c("tas", "pr", "tasmax"
-                                                       , "tasmin", "fd")
-                                         ,scenarios = "historical_era5"
-                                         ,product = "climatology"
-                                         ,aggregation = "annual"
-                                         ,time_period = "1950-2022"
-                                         ,product_type = "timeseries"
-                                         ,model = "ensemble-all"
-                                         ,percentile = "median"
-                                         ,statistic = "mean"
-                                         ,chunk_size = 3
-                                        )
-
-ncdf4::nc_open(here("Output", "climate_data_cmip6-x0.25_ssp245_ssp585_combined.nc"))
-raster::brick(here("Output", "climate_data_cmip6-x0.25_ssp245_ssp585_combined.nc"))
 
 ## Parametrized queries----
 era5_data_a <- get_climate_data_batch_parallel(
@@ -119,10 +120,10 @@ era5_data_b <- get_climate_data_batch_parallel(
   statistic = "mean"
 )
 
-era5_data_c <- get_climate_data(
+era5_data_c <- get_climate_data_batch_parallel(
   collection = "era5-x0.25",
-  variable_code =  "pr",
-  scenario = "historical_era5",
+  variables =  "pr",
+  scenarios = "historical_era5",
   product = "climatology", 
   aggregation = "annual",
   time_period = "1991-2020",
@@ -189,23 +190,17 @@ pop_x0.25_future  <- get_climate_data(
   product_type = "climatology"
 )
 
-# Open first file
-template_nc <- nc_open(nc_files[1])
+pattern_pop <- sprintf("^.*pop-x0.25.*\\.nc$")
 
-# Print full file information
-print(template_nc)  
+pop_files <- list.files(here("Data", "raw_climate"),
+                       pattern = pattern_pop,
+                       full.names = TRUE)
 
-# Check global attributes
-global_atts <- ncatt_get(template_nc, 0)
-print(global_atts)
-
-# Check variable attributes including CRS
-var_name <- names(template_nc$var)[1]
-var_atts <- ncatt_get(template_nc, var_name)
-print(var_atts)
-
-# Close file
-nc_close(template_nc)
+# Move files, inefficient but cute
+for (file in pop_files) { 
+  
+  file.rename(file, file.path(here("Output"), basename(file))) 
+  }
 
 # results <- test_parallel_api("FRA")
 # 

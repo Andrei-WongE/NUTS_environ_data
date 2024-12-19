@@ -963,12 +963,14 @@ validation <- fread(here("Data", "ghs", "validation_summary.csv"))
 
 # 4. Stack population raster ----
 # Stack relevant years
-pop_stack <- stack( raster(here("Data", "ghs", "pop_data_eu_2010.tif"))
-                    , raster(here("Data", "ghs", "pop_data_eu_2015.tif"))
-                    , raster(here("Data", "ghs", "pop_data_eu_2020.tif")) 
-                  )
+pop_stack <- c( terra::rast(here("Data", "ghs", "pop_data_eu_2010.tif"))
+               ,terra::rast(here("Data", "ghs", "pop_data_eu_2015.tif"))
+               ,terra::rast(here("Data", "ghs", "pop_data_eu_2020.tif")) 
+              )
+orig_crs <- crs(pop_stack)
 
-# Calculate annual arithmetic constant increase
+# Calculate annual arithmetic constant increase, rates show absolute population
+# change per year
 rate_2010_2015 <- (pop_stack[[2]] - pop_stack[[1]]) / 5
 rate_2015_2020 <- (pop_stack[[3]] - pop_stack[[2]]) / 5
 
@@ -987,14 +989,43 @@ pop_2018 <- pop_stack[[2]] + (rate_2015_2020 * 3)
 pop_2019 <- pop_stack[[2]] + (rate_2015_2020 * 4)
 
 # Stack results
-pop_raster <- stack(pop_stack[[1]], pop_2011, pop_2012, pop_2013, pop_2014,
+pop_raster <- c(pop_stack[[1]], pop_2011, pop_2012, pop_2013, pop_2014,
                 pop_stack[[2]], pop_2016, pop_2017, pop_2018, pop_2019,
                 pop_stack[[3]])
 
+crs(pop_raster) <- orig_crs
 names(pop_raster) <- paste0("pop_", 2010:2020)
 
+terra::writeRaster(pop_raster
+                   , here("Output","pop_raster_2010_2020.tif")
+                   , filetype = "GTiff"
+                   , overwrite = TRUE
+                   )
 
 # Review 
+# # Extract population values for each year
+# pop_data <- lapply(2010:2020, function(year) {
+#   values_year <- values(pop_raster[[paste0("pop_", year)]])
+#   list(
+#     year = year,
+#     min = min(values_year, na.rm = TRUE),
+#     max = max(values_year, na.rm = TRUE),
+#     mean = mean(values_year, na.rm = TRUE),
+#     median = median(values_year, na.rm = TRUE),
+#     zeros = sum(values_year == 0, na.rm = TRUE),
+#     NAs = sum(is.na(values_year)),
+#     total_population = sum(values_year, na.rm = TRUE)
+#   )
+# })
+# 
+# # Convert to a data frame for easier comparison
+# pop_df <- do.call(rbind, lapply(pop_data, as.data.frame))
+# print(pop_df)
+# 
+# # Check for consistency
+# plot(pop_df$year, pop_df$total_population)
+
+# Plot
 # pop_df <- as.data.frame(pop_raster)
 # 
 # pop_long <- pivot_longer(pop_df,
