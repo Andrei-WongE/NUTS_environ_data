@@ -151,6 +151,10 @@ Each step preserves spatial relationships while accounting for cell area variati
 This implements weighted mean as:
 Σ(value × lat_weight × pop_weight) / Σ(lat_weight × pop_weight)
 
+numerator = extract(era5_weighted, nuts1, fun='sum')  # Sum of weighted values
+denominator = extract(weights * pop_era5, nuts1, fun='sum')  # Sum of weights
+nuts1_means = numerator / denominator  # Weighted average
+
 
 ```{r era5_data_a}
 #| echo: false
@@ -172,10 +176,6 @@ r <- r[[subset_time]]
 # Crop ERA5 extent to NUTS exent, NUTS1 has the same extent as NUTS2
 era5_europe <- crop(r, ext(nuts1))
 
-# Create raster versions of NUTS using ERA5 as template, to perform raster-based zonal statistics afterwards and proper area weighting, using 1st layer as template
-nuts1_rast <- rasterize(nuts1, era5_europe[[1]], field = "NUTS_ID")
-nuts2_rast <- rasterize(nuts2, era5_europe[[1]], field = "NUTS_ID")
-
 # Latitudinal weighting, cellSize returns area of cells, accounting for latitude already
 # https://stackoverflow.com/questions/68308376/why-do-terracellsize-and-rasterarea-produce-different-estimates-of-raste
 weights <- terra::cellSize(era5_europe[[1]], unit = "km")
@@ -196,44 +196,61 @@ for(year in 2010:2020) {
   # Resample population to match ERA5 exactly
   pop_era5 <- terra::resample(pop_year, era5_europe[[1]], method = "sum")
   
+  # Weight ERA5 by both latitude and population
+  era5_weighted <- era5_europe * weights * pop_era5
+  
   # Ensure extent matches exactly
-  ext(pop_era5) <- ext(era5_europe[[1]])
+  # ext(pop_era5) <- ext(era5_europe[[1]])
   
-  # Mask population to NUTS boundaries
-  pop_nuts1 <- mask(pop_era5, nuts1_rast, updatevalue = 0)
-  pop_nuts2 <- mask(pop_era5, nuts2_rast, updatevalue = 0)
-  
-  # Apply latitute weights to ERA5 data
-  era5_weighted <- era5_europe * weights
-  
-  # Mask weighted ERA5 data to NUTS boundaries
-  era5_data_nuts1 <- mask(era5_weighted, nuts1_rast)
-  era5_data_nuts2 <- mask(era5_weighted, nuts2_rast)
-  
-  # Calculate weighted population means for each layer
-  nuts1_means <- lapply(1:nlyr(era5_data_nuts1), function(i) {
-    
-    weighted.mean(era5_data_nuts1[[i]], pop_nuts1, na.rm = TRUE)
-  })
-  
-  nuts2_means <- lapply(1:nlyr(era5_data_nuts2), function(i) {
-    
-    weighted.mean(era5_data_nuts2[[i]], pop_nuts2, na.rm = TRUE)
-  })
-  
-  # Store results
-  era5_data_a_nuts1_w[[as.character(year)]] <- do.call(c, nuts1_means)
-  era5_data_a_nuts2_w[[as.character(year)]] <- do.call(c, nuts2_means)
+  # Calculate denominators (sum of weights) for each NUTS region
+   weight_sums_nuts1 <- terra::extract(weights * pop_era5
+                                       , nuts1
+                                       , fun = 'sum'
+                                       , na.rm = TRUE
+                                       )
+   
+   weight_sums_nuts2 <- terra::extract(weights * pop_era5
+                                       , nuts2
+                                       , fun = 'sum'
+                                       , na.rm = TRUE
+                                       )
+   
+   # Extract weighted sums and divide by weight sums, exact=TRUE for more precise boundary calculations
+   nuts1_means <- terra::extract(era5_weighted
+                                , nuts1
+                                , fun = 'sum'
+                                , weights=TRUE
+                                , exact = TRUE
+                                , na.rm = TRUE
+                               )
+   
+   nuts2_means <- terra::extract(era5_weighted
+                                , nuts2
+                                , fun = 'sum'
+                                , weights=TRUE
+                                , exact = TRUE
+                                , na.rm = TRUE
+                               )
+   
+   # Apply weights
+   era5_data_a_nuts1_w[[as.character(year)]] <- data.frame(NUTS_ID = nuts1$NUTS_ID, 
+                                                        value = nuts1_means)
+   era5_data_a_nuts2_w[[as.character(year)]] <- data.frame(NUTS_ID = nuts2$NUTS_ID, 
+                                                        value = nuts2_means)
 }
 
 # Export results as SpatRaster objects
-terra::writeRaster(rast(era5_data_a_nuts1_w), 
-                  here("Output", "era5_data_a_nuts1_w.tif"), 
-                  overwrite = TRUE)
+# terra::writeRaster(rast(era5_data_a_nuts1_w), 
+#                   here("Output", "era5_data_a_nuts1_w.tif"), 
+#                   overwrite = TRUE)
+# 
+# terra::writeRaster(rast(era5_data_a_nuts2_w), 
+#                   here("Output", "era5_data_a_nuts2_w.tif"), 
+#                   overwrite = TRUE)
 
-terra::writeRaster(rast(era5_data_a_nuts2_w), 
-                  here("Output", "era5_data_a_nuts2_w.tif"), 
-                  overwrite = TRUE)
+# Export results as Rds objects
+saveRDS(era5_data_a_nuts1_w, here("Output","era5_data_a_nuts1_w.rds"))
+saveRDS(era5_data_a_nuts2_w, here("Output", "era5_data_a_nuts2_w.rds"))
 
 ```
 
@@ -326,97 +343,8 @@ Caveat:pr available timeperiod is 1991-2020.
 | Precipitation | pr | Climatology | historical_era5 | annual | Ensemble_all | 1995-2014 | climatology |
 
 ```{r era5-x0.25_b}
-s <- terra::rast(here("Output", "climate_data_era5-x0.25_historical_era5_climatology_1991-2020_combined.nc"
-))
-crs(s) <- "epsg:4326"
-
-"climatology-popcount-annual-mean_pop-x0.25_gpw-v4-rev11-historical_climatology_mean_1995-2014.nc"
-  
-# Slicing time dimension to 1991-2020 eras5
-start_date <- as.Date("1991-01-01")
-end_date <- as.Date("2020-12-31")
-subset_time <- terra::time(s) >= start_date & terra::time(s) <= end_date
-s <- s[[subset_time]]
-
-# Aggregate to create era5_data_b
-r <- terra::rast(here("Output", "climate_data_era5-x0.25_historical_era5_timeseries_1995-2014_combined.nc"))
-crs(r) <- "epsg:4326"
-
-r <- terra::rast((r, s)
-
-# Slice time of era5_data_c to 1995-2014 to match era5_data_b
-start_date <- as.Date("1995-01-01")
-end_date <- as.Date("2014-12-31")
-subset_time <- terra::time(r) >= start_date & terra::time(r) <= end_date
-r <- r[[subset_time]]
-
-# Crop ERA5 extent to NUTS exent, NUTS1 has the same extent as NUTS2
-era5_europe <- crop(r, ext(nuts1))
-
-# Create raster versions of NUTS using ERA5 as template, to perform raster-based zonal statistics afterwards and proper area weighting, using 1st layer as template
-nuts1_rast <- rasterize(nuts1, era5_europe[[1]], field = "NUTS_ID")
-nuts2_rast <- rasterize(nuts2, era5_europe[[1]], field = "NUTS_ID")
-
-# Latitudinal weighting, cellSize returns area of cells, accounting for latitude already
-# https://stackoverflow.com/questions/68308376/why-do-terracellsize-and-rasterarea-produce-different-estimates-of-raste
-weights <- terra::cellSize(era5_europe[[1]], unit = "km")
-
-# Process population data to align extend and resolution of era5
-pop_raster <- terra::rast(here("Output","pop_raster_2010_2020.tif"))
-
-# Initialize lists
-era5_data_a_nuts1_w <- list()
-era5_data_a_nuts2_w <- list()
-
-# Apply yearly NUTS level latitude and population weights for each cell of the layers of eras5 data
-for(year in 2010:2020) {
-  
-  # Extract population for specific year
-  pop_year <- pop_raster[[paste0("pop_", year)]]
-  
-  # Resample population to match ERA5 exactly
-  pop_era5 <- terra::resample(pop_year, era5_europe[[1]], method = "sum")
-  
-  # Ensure extent matches exactly
-  ext(pop_era5) <- ext(era5_europe[[1]])
-  
-  # Mask population to NUTS boundaries
-  pop_nuts1 <- mask(pop_era5, nuts1_rast, updatevalue = 0)
-  pop_nuts2 <- mask(pop_era5, nuts2_rast, updatevalue = 0)
-  
-  # Apply latitute weights to ERA5 data
-  era5_weighted <- era5_europe * weights
-  
-  # Mask weighted ERA5 data to NUTS boundaries
-  era5_data_nuts1 <- mask(era5_weighted, nuts1_rast)
-  era5_data_nuts2 <- mask(era5_weighted, nuts2_rast)
-  
-  # Calculate weighted population means for each layer
-  nuts1_means <- lapply(1:nlyr(era5_data_nuts1), function(i) {
-    
-    weighted.mean(era5_data_nuts1[[i]], pop_nuts1, na.rm = TRUE)
-  })
-  
-  nuts2_means <- lapply(1:nlyr(era5_data_nuts2), function(i) {
-    
-    weighted.mean(era5_data_nuts2[[i]], pop_nuts2, na.rm = TRUE)
-  })
-  
-  # Store results
-  era5_data_a_nuts1_w[[as.character(year)]] <- do.call(c, nuts1_means)
-  era5_data_a_nuts2_w[[as.character(year)]] <- do.call(c, nuts2_means)
-}
 
 
-
-# Export results as SpatRaster objects
-terra::writeRaster(rast(era5_data_a_nuts1_w), 
-                  here("Output", "era5_data_a_nuts1_w.tif"), 
-                  overwrite = TRUE)
-
-terra::writeRaster(rast(era5_data_a_nuts2_w), 
-                  here("Output", "era5_data_a_nuts2_w.tif"), 
-                  overwrite = TRUE)
 ```
 
 
@@ -493,7 +421,110 @@ Future population= Current population (GHS)+ anomaly (WB NASA population data)
 | cmip6-x0.25_B | pr | Climatology | ssp245 & ssp585 | Annual | Ensemble_all | 1995-2014 | Median | Climatology | Mean Precipitation |
 
 
-```{r}
-# Wraggling per variable
+```{r Caclulation_proyectiosn}
+
+# Load and calculating inputs
+
+## Collection era5-xO.25_B: 1995-2014
+era5_historic <- terra::rast(here("Output","climate_data_era5-x0.25_historical_era5_climatology_1995-2014_combined.nc"))
+crs(r) <- "EPSG:4326"
+
+## Collection cmip6-xO.25_A: 2040-2059
+cmip6_future <- terra::rast(here("Output","climate_data_cmip6-x0.25_ssp245_ssp585_climatology_2040-2059_combined.nc"))
+crs(r) <- "EPSG:4326"
+
+## Collection cmip6-xO.25 _B: 2040-2059
+cmip6_historic <- terra::rast(here("Output","climate_data_cmip6-x0.25_ssp245_ssp585_climatology_2040-2059_combined.nc"))
+crs(r) <- "EPSG:4326"
+
+## popcount 2040-2059/2040 by scenario
+pop_fut_ssp585 <- terra::rast(here("Output","climatology-popcount-annual-mean_pop-x0.25_gpw-v4-rev11-ssp585_climatology_mean_2040-2059.nc"))
+
+pop_fut_ssp245 <- terra::rast(here("Output","climatology-popcount-annual-mean_pop-x0.25_gpw-v4-rev11-ssp245_climatology_mean_2040-2059.nc"))
+
+## popcount 1995-2014/ 1995
+pop_hist <- terra::rast(here("Output","climatology-popcount-annual-mean_pop-x0.25_gpw-v4-rev11-historical_climatology_mean_1995-2014.nc"))
+
+## Calculate anomaly population (popcount 2040-2059) – (popcount 1995-2014) for each scenario
+# Verify extent and resolution match
+compareGeom(pop_fut_ssp585, pop_hist)
+compareGeom(pop_fut_ssp245, pop_hist)
+
+summary(values(pop_fut_ssp585))
+
+pop_anomaly_ssp585 <- pop_fut_ssp585 - pop_hist #Negative values!! REVIEW!!!!!!!!!!!!!!!
+pop_anomaly_ssp245 <- pop_fut_ssp245 - pop_hist
+
+# Change to nuts extent
+pop_anomaly_ssp585 <- crop(pop_anomaly_ssp585, ext(nuts1))
+pop_anomaly_ssp245 <- crop(pop_anomaly_ssp245, ext(nuts1))
+
+writeCDF(pop_anomaly_ssp585, here("Output", "pop_anomaly_ssp585.nc")
+         , varname = "pop_anomaly_ssp585"
+         , longname = "Anomaly population scenario ssp585"
+         , overwrite = TRUE)
+writeCDF(pop_anomaly_ssp585, here("Output", "pop_anomaly_ssp585.nc")
+         , varname = "pop_anomaly_ssp585"
+         , longname = "Anomaly population scenario ssp585"
+         , overwrite = TRUE)
+
+## Calculate future population for each scenario
+
+### Ensure same extent
+pop_raster_ext <- crop(pop_raster[["pop_2015"]], 
+                             ext(pop_anomaly_ssp585),
+                             snap = "near") #Snaps to the nearest pixel boundaries
+
+### Then aggregate
+pop_raster_resampled <- aggregate(pop_raster_ext, 
+                                  fact = 30,  # 30 arc-seconds to 0.25 degrees 
+                                  fun = "sum")
+
+# Verify extent and resolution match
+compareGeom(pop_fut_ssp585, pop_raster[["pop_2015"]])
+compareGeom(pop_fut_ssp245, pop_raster[["pop_2015"]])
+
+future_pop_ssp585 <- pop_raster[["pop_2015"]] + pop_anomaly_ssp585
+future_pop_ssp245 <- pop_raster[["pop_2015"]] + pop_anomaly_ssp245
+
+# Estimate future values by scenario
+
+non_rain_vars<- c("tas", "cdd65", "hdd65", "hd30", "hd35", "fd", "id")
+rain_vars <- c("r20mm", "r50mm", "pr")
+
+## Scenario ssp585:
+### Non-rain variables: sum anomaly to historic mean:
+# Collection era5-xO.25_B + Collection cmip6-xO.25 _A
+
+for(var in non_rain_vars) {
+ anomaly <- cmip6_future[[paste0(var,"_ssp585")]] - cmip6_historic[[var]]
+ future_ssp585[[var]] <- era5_historic[[var]] + anomaly
+}
+
+### Rain variables: use change wrt to historic mean:
+# Deltha change: Collection cmip6-xO.25 _A/ Collection cmip6-xO.25 _B
+
+# Collection era5-xO.25_B *(1+ Deltha change)
+for(var in rain_vars) {
+ ratio <- (cmip6_future[[paste0(var,"_ssp585")]] / cmip6_historic[[var]]) - 1
+ future_ssp585[[var]] <- era5_historic[[var]] * (1 + ratio)
+}
+
+## Scenario ssp245:
+### Non-rain variables: sum anomaly to historic mean:
+# Collection era5-xO.25_B + Collection cmip6-xO.25 _A
+for(var in non_rain_vars) {
+ anomaly <- cmip6_future[[paste0(var,"_ssp245")]] - cmip6_historic[[var]]
+ future_ssp245[[var]] <- era5_historic[[var]] + anomaly
+}
+
+### Rain variables: use change wrt to historic mean:
+# Deltha change: Collection cmip6-xO.25 _A/ Collection cmip6-xO.25 _B
+
+# Collection era5-xO.25_B *(1+ Deltha change)
+for(var in rain_vars) {
+ ratio <- (cmip6_future[[paste0(var,"_ssp245")]] / cmip6_historic[[var]]) - 1
+ future_ssp245[[var]] <- era5_historic[[var]] * (1 + ratio)
+}
 ```
 

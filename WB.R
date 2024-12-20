@@ -124,7 +124,7 @@ era5_data_c <- get_climate_data_batch_parallel(
   collection = "era5-x0.25",
   variables =  "pr",
   scenarios = "historical_era5",
-  product = "climatology", 
+  product = "climatology",
   aggregation = "annual",
   time_period = "1991-2020",
   product_type = "climatology",

@@ -66,7 +66,7 @@ crs(nuts1)==crs(nuts2)
 
 # Verifying if NUTS_ID is unique
 length(unique(nuts1$NUTS_ID)) == nrow(nuts1)
-length(unique(nuts2$NUTS_ID)) == nrow(nuts2)
+length(unique(nuts2$NUTS_ID)) == nrow(nuts1)
 
 # Verifying if NUTS_ID has missing valuess or empty values
 sum(is.na(nuts1$NUTS_ID)) == 0

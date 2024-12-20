@@ -132,8 +132,6 @@ get_climate_data <- function(collection,
   return(local_file)
 }
 
-source("auxilary_functions.R")
-
 # Function to batch process climate data in parallel from AWS S3 -----
 get_climate_data_batch_parallel <-  function(collection,
                                              variables,
@@ -219,45 +217,18 @@ get_climate_data_batch_parallel <-  function(collection,
                                         paste(scenarios, collapse="_"),
                                         product_type, 
                                         time_period,
+                                        if(length(variables) == 1) variables[1],
                                         "combined.nc",
                                         sep="_"))
   
-  rast_stack  <- terra::rast(nc_files)
+  # Create a combined raster
+  combined_nc <- c(rast(nc_files))
   
-  # In case of more than one scenario
-  variables <- if(length(scenarios) > 1) {
-    
-    # Function to extract variable and scenario from filename
-    extract_var_scenario <- function(filename) {
-      
-      # Split the filename by underscores
-      parts <- unlist(strsplit(basename(filename), "_"))
-      
-      # Extract variable (second part of first segment)
-      variable <- unlist(strsplit(parts[1], "-"))[2]
-      
-      # Extract scenario (from the segment containing "ssp")
-      scenario_segment <- grep("ssp", parts, value = TRUE)
-      scenario <- sub("ensemble-all-", "", scenario_segment)
-      
-      # Combine variable and scenario
-      paste0(variable, "_", scenario)
-    }
-    
-   sapply(nc_files, extract_var_scenario)
-    
-  } else {
-    
-    variables
-  }
-  
-  writeCDF(rast_stack
-           , outfile
-           , varname = variables
-           , overwrite = TRUE
-           , compression = 4
-           , verbose = TRUE
-           )
+  # Write single file
+  terra::writeCDF(combined_nc
+                    , outfile
+                    , overwrite = TRUE
+                    )
   
   # Cleanup
   unlink(nc_files)
@@ -265,7 +236,7 @@ get_climate_data_batch_parallel <-  function(collection,
   
   message("Created output file: ", outfile)
   
-  return(rast_stack)
+  return(combined_nc)
 }
 
 # # Write to single NetCDF
