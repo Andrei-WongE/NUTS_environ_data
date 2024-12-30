@@ -28,7 +28,7 @@ dir.create(here("Data", "nuts"), recursive = TRUE)
 ## Runs the following --------
 # 1. Load the NUTS data
 # 2. Create separate NUTS level objects
-# 3. Sets CRS to Mollweide
+# 3. Performs checks
 
 # https://github.com/antaldaniel/eurostat_regional/blob/master/Rearrange-Regional-Data.md
 # Nuts R package: https://cran.r-project.org/web/packages/nuts/vignettes/nuts.html
@@ -72,3 +72,4 @@ length(unique(nuts2$NUTS_ID)) == nrow(nuts1)
 sum(is.na(nuts1$NUTS_ID)) == 0
 sum(is.na(nuts2$NUTS_ID)) == 0
 
+rm(nuts)

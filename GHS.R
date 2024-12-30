@@ -31,8 +31,7 @@ dir.create(here("Data", "ghs", "plots"), recursive = TRUE, showWarnings = FALSE)
 ## Runs the following --------
 # 1. Downloads the data via URL
 # 2. Performs data checks
-# 3. Exports data in CSV
-# 4. 
+# 3. 
 
 ## Downloading and Uploading data ----
 require(httr)
@@ -141,7 +140,7 @@ require(ggspatial)
 
 
 
-# 2. Check population raster ----
+# 2. Download GHSL population raster ----
 require(httr)
 require(terra)
 require(tidyverse)
@@ -296,8 +295,6 @@ message("\nTiming Summary:")
 tic.log(format = TRUE) %>%
   print()
 
-
-
 ## Examine structure and resolution------
 
 analyze_population_data <- function(years) {
@@ -362,7 +359,7 @@ analyze_population_data <- function(years) {
         na.value = NA,
         trans = "log1p"
       ) +
-      coord_sf(crs = st_crs(3035),  
+      coord_sf(crs = st_crs(4326),  
                expand = FALSE) +     # Plot extends exactly to data boundaries
       annotation_scale(location = "br", style = "ticks") +
       annotation_north_arrow(location = "tl", 
@@ -403,364 +400,364 @@ analyze_population_data(available_years)
   # Metadata (RDS)
   # Aggregated rasters (if needed)
 
-results_eupop <- readRDS(here("Data", "Eurostat", "results_eupop.rds"))
-
-require(terra)
-require(sf)
-require(tidyverse)
-require(future)
-require(future.apply)
-require(here)
-require(tictoc)
-require(data.table)
-require(pryr)
-
-#' Print message with timestamp
-log_message <- function(msg, type = "info") {
-  timestamp <- format(Sys.time(), "%H:%M:%S")
-  prefix <- switch(type,
-                   info = "===",
-                   warning = "!!!", 
-                   error = "XXX",
-                   success = "✓")
-  
-  cat(sprintf("[%s] %s %s\n", timestamp, prefix, msg))
-}
-
-#' #' Format numbers with commas
-#' format_pop <- function(x) {
-#'   format(x, big.mark = ",", scientific = FALSE, trim = TRUE)
+#' results_eupop <- readRDS(here("Data", "Eurostat", "results_eupop.rds"))
+#' 
+#' require(terra)
+#' require(sf)
+#' require(tidyverse)
+#' require(future)
+#' require(future.apply)
+#' require(here)
+#' require(tictoc)
+#' require(data.table)
+#' require(pryr)
+#' 
+#' #' Print message with timestamp
+#' log_message <- function(msg, type = "info") {
+#'   timestamp <- format(Sys.time(), "%H:%M:%S")
+#'   prefix <- switch(type,
+#'                    info = "===",
+#'                    warning = "!!!", 
+#'                    error = "XXX",
+#'                    success = "✓")
+#'   
+#'   cat(sprintf("[%s] %s %s\n", timestamp, prefix, msg))
 #' }
-
-#' Harmonize population grid to climate grid resolution
-#' @param pop SpatRaster with population data
-#' @param template SpatRaster template for target resolution
-#' @param method Character: "sum" or "bilinear"
-#' @return List with harmonized raster and QC stats
-
-harmonize_population <- function(pop, template, method="sum") {
-  
-  if(!is.SpatRaster(pop) || !is.SpatRaster(template)) {
-    stop("Inputs must be SpatRaster objects")
-  }
-  
-  if(!identical(crs(pop), crs(template))) {
-    stop("CRS mismatch between population and template")
-  }
-  
-  # Store original total population
-  orig_total <- global(pop, "sum", na.rm=TRUE)[[1]]
-  
-  # Determine resampling approach
-  if(res(pop)[1] > res(template)[1]) {
-    # Disaggregating - use bilinear
-    pop_harm <- resample(pop, template, method="bilinear")
-  } else {
-    # Aggregating - use sum to preserve counts
-    pop_harm <- resample(pop, template, method="sum")
-  }
-  
-  # Check population preservation
-  new_total <- global(pop_harm, "sum", na.rm=TRUE)[[1]]
-  diff_pct <- (new_total - orig_total) / orig_total * 100
-  
-  list(
-    raster = pop_harm,
-    orig_total = orig_total,
-    new_total = new_total,
-    diff_pct = diff_pct
-  )
-}
-
-#' Validate GHS raster against Eurostat data
-#' @param r Raster to validate
-#' @param year Year to check
-#' @param eupop Eurostat population data
-
-validate_with_eurostat <- function(r, year, eupop) {
-  if(is.null(eupop)) return(NULL)
-  
-  # Get Eurostat population for this year
-  eu_data <- eupop$totals %>%
-    filter(time == year)
-  
-  if(nrow(eu_data) == 0) {
-    log_message(sprintf("No Eurostat data for %s", year), "warning")
-    return(NULL)
-  }
-  
-  # Calculate GHS total
-  raster_total <- global(r, "sum", na.rm=TRUE)[[1]]
-  
-  # Get Eurostat total and coverage
-  eu_total <- eu_data$total_pop
-  countries_covered <- eu_data$countries_with_data
-  countries_missing <- eu_data$countries_missing
-  
-  # Calculate difference
-  diff_abs <- raster_total - eu_total
-  diff_pct <- (diff_abs / eu_total) * 100
-  
-  log_message(sprintf("Eurostat comparison for %s:", year), "info")
-  log_message(sprintf("  - GHS total: %s", format_pop(raster_total)), "info")
-  log_message(sprintf("  - Eurostat total: %s", format_pop(eu_total)), "info")
-  log_message(sprintf("  - Absolute difference: %s", format_pop(diff_abs)), "info")
-  log_message(sprintf("  - Relative difference: %.2f%%", diff_pct),
-              if(abs(diff_pct) > 10) "warning" else "info")
-  log_message(sprintf("  - Eurostat coverage: %d countries (missing: %d)", 
-                      countries_covered, countries_missing), "info")
-  
-  return(list(
-    year = year,
-    ghs_total = raster_total,
-    eurostat_total = eu_total,
-    diff_abs = diff_abs,
-    diff_pct = diff_pct,
-    countries_covered = countries_covered,
-    countries_missing = countries_missing
-  ))
-}
-
-#' Validate and process single GHS raster
-#' @param rast_path Path to raster file
-#' @param year Year of the data
-#' @param eupop Eurostat population data
-#' @param target_res Target resolution in meters
-#' @param output_dir Directory to save processed files
-
-validate_ghs_file <- function(rast_path, year, eupop = NULL, 
-                              target_res = 25000, output_dir = NULL) {
-  log_message(sprintf("\nProcessing year %s", year), "info")
-  
-  # Read raster
-  r <- rast(rast_path)
-  
-  # Perform aggregation
-  agg_result <- harmonize_population(r, target_res)
-  r_final <- agg_result$raster
-  
-  # Save aggregated raster if output directory is provided
-  if(!is.null(output_dir)) {
-    output_file <- file.path(output_dir, 
-                             sprintf("pop_data_eu_%d_%dkm.tif", 
-                                     year, 
-                                     target_res/1000))
-    log_message(sprintf("Saving aggregated raster to: %s", output_file), "info")
-    writeRaster(r_final, output_file, overwrite=TRUE)
-  }
-  
-  # Basic checks on aggregated raster
-  basic_checks <- list(
-    year = year,
-    crs = crs(r_final) == "EPSG:3035",
-    dims = dim(r_final),
-    resolution = res(r_final),
-    extent = ext(r_final),
-    has_values = !all(is.na(values(r_final))),
-    total_pop = agg_result$agg_total,
-    orig_res = res(r)[1],
-    agg_factor = agg_result$agg_factor
-  )
-  
-  log_message(sprintf("Aggregated population total: %s", 
-                      format_pop(basic_checks$total_pop)), "info")
-  
-  # Edge effects check
-  edge_stats <- tryCatch({
-    r_poly <- as.polygons(ext(r_final), crs=crs(r_final))
-    edge_mask <- buffer(r_poly, width=-res(r_final)[1])
-    
-    masked_r <- mask(r_final, edge_mask)
-    stats <- list(
-      edge_cells = global(is.na(masked_r), "sum", na.rm=TRUE)[[1]],
-      edge_pop = global(masked_r, "sum", na.rm=TRUE)[[1]],
-      total_cells = ncell(r_final)
-    )
-    
-    stats$edge_pct <- (stats$edge_cells / stats$total_cells) * 100
-    log_message(sprintf("Edge cells: %.1f%% of total", stats$edge_pct), 
-                if(stats$edge_pct > 5) "warning" else "info")
-    
-    stats
-  }, error = function(e) {
-    log_message(sprintf("Edge effect calculation failed: %s", e$message), "warning")
-    list(
-      edge_cells = NA,
-      edge_pop = NA,
-      total_cells = ncell(r_final),
-      edge_pct = NA
-    )
-  })
-  
-  # Eurostat validation
-  eurostat_check <- validate_with_eurostat(r_final, year, eupop)
-  
-  return(list(
-    basic_checks = basic_checks,
-    edge_stats = edge_stats,
-    eurostat_check = eurostat_check,
-    aggregation = agg_result[c("aggregated", "orig_total", "agg_total", "agg_factor")]
-  ))
-}
-
-#' Main processing function
-#' @param input_dir Directory containing input GHS files
-#' @param output_dir Directory to save processed files
-#' @param target_res Target resolution in meters
-#' @param n_cores Number of cores for parallel processing
-#' @param eupop Eurostat population data
-
-process_ghs_timeseries <- function(input_dir = here("Data", "ghs"),
-                                   output_dir = here("Output"),
-                                   target_res = 25000,
-                                   n_cores = availableCores() - 1,
-                                   eupop = results_eupop) {
-  
-  # Start timing
-  total_time <- Sys.time()
-  initial_mem <- mem_used()
-  
-  log_message("=== GHS Processing Pipeline Started ===", "info")
-  
-  # Create output directory if it doesn't exist
-  dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
-  
-  # List files and extract years
-  ghs_files <- list.files(input_dir, 
-                          pattern = "pop_data_eu_\\d{4}\\.tif$",
-                          full.names = TRUE)
-  
-  years <- str_extract(basename(ghs_files), "\\d{4}") %>% as.numeric()
-  
-  log_message(sprintf("Found %d files to process (%d-%d)", 
-                      length(ghs_files), min(years), max(years)), "info")
-  
-  # Setup parallel processing
-  plan(multisession, workers = n_cores)
-  log_message(sprintf("Using %d cores for processing", n_cores), "info")
-  
-  # Process files
-  validation_results <- future_map(seq_along(ghs_files), function(i) {
-    validate_ghs_file(ghs_files[i], years[i], eupop, target_res, output_dir)
-  }, .progress = TRUE)
-  
-  # Compile results
-  validation_summary <- data.table(
-    year = years,
-    total_pop = sapply(validation_results, function(x) x$basic_checks$total_pop),
-    mean_density = sapply(validation_results, function(x) 
-      x$basic_checks$total_pop / prod(x$basic_checks$dims[1:2])),
-    edge_cells_pct = sapply(validation_results, function(x) x$edge_stats$edge_pct),
-    eurostat_diff_pct = sapply(validation_results, function(x) 
-      if(!is.null(x$eurostat_check)) x$eurostat_check$diff_pct else NA)
-  )
-  
-  # Final Summary Report
-  cat("\n=== Validation Summary ===\n")
-  
-  # Population trend analysis
-  pop_growth <- diff(validation_summary$total_pop)/validation_summary$total_pop[-1]*100
-  high_growth_years <- years[-1][abs(pop_growth) > 5]
-  
-  if(length(high_growth_years) == 0) {
-    log_message("Population trends: Consistent growth pattern", "success")
-  } else {
-    log_message(sprintf("Population trends: Anomalies in years: %s", 
-                        paste(high_growth_years, collapse=", ")), "warning")
-  }
-  
-  # Edge effects summary
-  mean_edge <- mean(validation_summary$edge_cells_pct, na.rm = TRUE)
-  if(mean_edge < 3) {
-    log_message("Edge effects: Within acceptable range", "success")
-  } else {
-    log_message(sprintf("Edge effects: High average (%.1f%%)", mean_edge), "warning")
-  }
-  
-  # Eurostat comparison summary
-  eurostat_issues <- validation_summary[abs(eurostat_diff_pct) > 10, year]
-  if(length(eurostat_issues) == 0) {
-    log_message("Eurostat validation: All comparisons within ±10%", "success")
-  } else {
-    log_message(sprintf("Eurostat validation: Large differences in years: %s",
-                        paste(eurostat_issues, collapse=", ")), "warning")
-  }
-  
-  # Save validation summary
-  fwrite(validation_summary, 
-         file.path(output_dir, "validation_summary.csv"))
-  
-  # Create detailed comparison table
-  comparison_table <- data.table(
-    year = years,
-    ghs_population = format_pop(validation_summary$total_pop),
-    eurostat_population = sapply(validation_results, function(x) 
-      if(!is.null(x$eurostat_check)) format_pop(x$eurostat_check$eurostat_total) else NA),
-    absolute_difference = sapply(validation_results, function(x) 
-      if(!is.null(x$eurostat_check)) format_pop(x$eurostat_check$diff_abs) else NA),
-    percent_difference = sapply(validation_results, function(x) 
-      if(!is.null(x$eurostat_check)) sprintf("%.2f%%", x$eurostat_check$diff_pct) else NA),
-    countries_covered = sapply(validation_results, function(x) 
-      if(!is.null(x$eurostat_check)) x$eurostat_check$countries_covered else NA)
-  )
-  
-  fwrite(comparison_table,
-         file.path(output_dir, "eurostat_comparison.csv"))
-  
-  # Save metadata
-  metadata <- list(
-    processing_date = Sys.time(),
-    input_files = ghs_files,
-    output_directory = output_dir,
-    years_processed = years,
-    resolution = list(
-      target = target_res,
-      original = sapply(validation_results, function(x) x$basic_checks$orig_res)
-    ),
-    crs = "EPSG:4326",
-    eurostat_validation = TRUE,
-    validation_summary = validation_summary,
-    processing_time = difftime(Sys.time(), total_time, units = "secs"),
-    memory_used = mem_used() - initial_mem
-  )
-  
-  saveRDS(metadata, 
-          file.path(output_dir, "processing_metadata.rds"))
-  
-  # Final timing and memory usage
-  total_time <- difftime(Sys.time(), total_time, units = "secs")
-  final_mem <- mem_used()
-  mem_used <- final_mem - initial_mem
-  
-  log_message(sprintf("\nProcessing completed in %.1f seconds", total_time), "info")
-  log_message(sprintf("Peak memory usage: %.1f GB", mem_used/1e9), "info")
-  log_message(sprintf("Output files saved in: %s", normalizePath(output_dir)), "info")
-  
-  # Print comparison table
-  message("\nDetailed Population Comparison:")
-  print(comparison_table)
-  
-  return(list(
-    validation = validation_summary,
-    comparison = comparison_table,
-    processing_time = total_time,
-    memory_used = mem_used,
-    metadata = metadata
-  ))
-}
-
-results <- process_ghs_timeseries( input_dir = here("Data", "ghs") 
-                                  , output_dir = here("Output")
-                                  , target_res = 25000             
-                                  , n_cores = 12
-                                  , eupop = results_eupop # Pop dataset fro validation
-                                  )
-
-results$validation        # Table with validation metrics
-
-validation <- fread(here("Data", "ghs", "validation_summary.csv"))
-
-(metadata <- readRDS(here("Data", "ghs", "processing_metadata.rds")))
+#' 
+#' #' #' Format numbers with commas
+#' #' format_pop <- function(x) {
+#' #'   format(x, big.mark = ",", scientific = FALSE, trim = TRUE)
+#' #' }
+#' 
+#' #' Harmonize population grid to climate grid resolution
+#' #' @param pop SpatRaster with population data
+#' #' @param template SpatRaster template for target resolution
+#' #' @param method Character: "sum" or "bilinear"
+#' #' @return List with harmonized raster and QC stats
+#' 
+#' harmonize_population <- function(pop, template, method="sum") {
+#'   
+#'   if(!is.SpatRaster(pop) || !is.SpatRaster(template)) {
+#'     stop("Inputs must be SpatRaster objects")
+#'   }
+#'   
+#'   if(!identical(crs(pop), crs(template))) {
+#'     stop("CRS mismatch between population and template")
+#'   }
+#'   
+#'   # Store original total population
+#'   orig_total <- global(pop, "sum", na.rm=TRUE)[[1]]
+#'   
+#'   # Determine resampling approach
+#'   if(res(pop)[1] > res(template)[1]) {
+#'     # Disaggregating - use bilinear
+#'     pop_harm <- resample(pop, template, method="bilinear")
+#'   } else {
+#'     # Aggregating - use sum to preserve counts
+#'     pop_harm <- resample(pop, template, method="sum")
+#'   }
+#'   
+#'   # Check population preservation
+#'   new_total <- global(pop_harm, "sum", na.rm=TRUE)[[1]]
+#'   diff_pct <- (new_total - orig_total) / orig_total * 100
+#'   
+#'   list(
+#'     raster = pop_harm,
+#'     orig_total = orig_total,
+#'     new_total = new_total,
+#'     diff_pct = diff_pct
+#'   )
+#' }
+#' 
+#' #' Validate GHS raster against Eurostat data
+#' #' @param r Raster to validate
+#' #' @param year Year to check
+#' #' @param eupop Eurostat population data
+#' 
+#' validate_with_eurostat <- function(r, year, eupop) {
+#'   if(is.null(eupop)) return(NULL)
+#'   
+#'   # Get Eurostat population for this year
+#'   eu_data <- eupop$totals %>%
+#'     filter(time == year)
+#'   
+#'   if(nrow(eu_data) == 0) {
+#'     log_message(sprintf("No Eurostat data for %s", year), "warning")
+#'     return(NULL)
+#'   }
+#'   
+#'   # Calculate GHS total
+#'   raster_total <- global(r, "sum", na.rm=TRUE)[[1]]
+#'   
+#'   # Get Eurostat total and coverage
+#'   eu_total <- eu_data$total_pop
+#'   countries_covered <- eu_data$countries_with_data
+#'   countries_missing <- eu_data$countries_missing
+#'   
+#'   # Calculate difference
+#'   diff_abs <- raster_total - eu_total
+#'   diff_pct <- (diff_abs / eu_total) * 100
+#'   
+#'   log_message(sprintf("Eurostat comparison for %s:", year), "info")
+#'   log_message(sprintf("  - GHS total: %s", format_pop(raster_total)), "info")
+#'   log_message(sprintf("  - Eurostat total: %s", format_pop(eu_total)), "info")
+#'   log_message(sprintf("  - Absolute difference: %s", format_pop(diff_abs)), "info")
+#'   log_message(sprintf("  - Relative difference: %.2f%%", diff_pct),
+#'               if(abs(diff_pct) > 10) "warning" else "info")
+#'   log_message(sprintf("  - Eurostat coverage: %d countries (missing: %d)", 
+#'                       countries_covered, countries_missing), "info")
+#'   
+#'   return(list(
+#'     year = year,
+#'     ghs_total = raster_total,
+#'     eurostat_total = eu_total,
+#'     diff_abs = diff_abs,
+#'     diff_pct = diff_pct,
+#'     countries_covered = countries_covered,
+#'     countries_missing = countries_missing
+#'   ))
+#' }
+#' 
+#' #' Validate and process single GHS raster
+#' #' @param rast_path Path to raster file
+#' #' @param year Year of the data
+#' #' @param eupop Eurostat population data
+#' #' @param target_res Target resolution in meters
+#' #' @param output_dir Directory to save processed files
+#' 
+#' validate_ghs_file <- function(rast_path, year, eupop = NULL, 
+#'                               target_res = 25000, output_dir = NULL) {
+#'   log_message(sprintf("\nProcessing year %s", year), "info")
+#'   
+#'   # Read raster
+#'   r <- rast(rast_path)
+#'   
+#'   # Perform aggregation
+#'   agg_result <- harmonize_population(r, target_res)
+#'   r_final <- agg_result$raster
+#'   
+#'   # Save aggregated raster if output directory is provided
+#'   if(!is.null(output_dir)) {
+#'     output_file <- file.path(output_dir, 
+#'                              sprintf("pop_data_eu_%d_%dkm.tif", 
+#'                                      year, 
+#'                                      target_res/1000))
+#'     log_message(sprintf("Saving aggregated raster to: %s", output_file), "info")
+#'     writeRaster(r_final, output_file, overwrite=TRUE)
+#'   }
+#'   
+#'   # Basic checks on aggregated raster
+#'   basic_checks <- list(
+#'     year = year,
+#'     crs = crs(r_final) == "EPSG:3035",
+#'     dims = dim(r_final),
+#'     resolution = res(r_final),
+#'     extent = ext(r_final),
+#'     has_values = !all(is.na(values(r_final))),
+#'     total_pop = agg_result$agg_total,
+#'     orig_res = res(r)[1],
+#'     agg_factor = agg_result$agg_factor
+#'   )
+#'   
+#'   log_message(sprintf("Aggregated population total: %s", 
+#'                       format_pop(basic_checks$total_pop)), "info")
+#'   
+#'   # Edge effects check
+#'   edge_stats <- tryCatch({
+#'     r_poly <- as.polygons(ext(r_final), crs=crs(r_final))
+#'     edge_mask <- buffer(r_poly, width=-res(r_final)[1])
+#'     
+#'     masked_r <- mask(r_final, edge_mask)
+#'     stats <- list(
+#'       edge_cells = global(is.na(masked_r), "sum", na.rm=TRUE)[[1]],
+#'       edge_pop = global(masked_r, "sum", na.rm=TRUE)[[1]],
+#'       total_cells = ncell(r_final)
+#'     )
+#'     
+#'     stats$edge_pct <- (stats$edge_cells / stats$total_cells) * 100
+#'     log_message(sprintf("Edge cells: %.1f%% of total", stats$edge_pct), 
+#'                 if(stats$edge_pct > 5) "warning" else "info")
+#'     
+#'     stats
+#'   }, error = function(e) {
+#'     log_message(sprintf("Edge effect calculation failed: %s", e$message), "warning")
+#'     list(
+#'       edge_cells = NA,
+#'       edge_pop = NA,
+#'       total_cells = ncell(r_final),
+#'       edge_pct = NA
+#'     )
+#'   })
+#'   
+#'   # Eurostat validation
+#'   eurostat_check <- validate_with_eurostat(r_final, year, eupop)
+#'   
+#'   return(list(
+#'     basic_checks = basic_checks,
+#'     edge_stats = edge_stats,
+#'     eurostat_check = eurostat_check,
+#'     aggregation = agg_result[c("aggregated", "orig_total", "agg_total", "agg_factor")]
+#'   ))
+#' }
+#' 
+#' #' Main processing function
+#' #' @param input_dir Directory containing input GHS files
+#' #' @param output_dir Directory to save processed files
+#' #' @param target_res Target resolution in meters
+#' #' @param n_cores Number of cores for parallel processing
+#' #' @param eupop Eurostat population data
+#' 
+#' process_ghs_timeseries <- function(input_dir = here("Data", "ghs"),
+#'                                    output_dir = here("Output"),
+#'                                    target_res = 25000,
+#'                                    n_cores = availableCores() - 1,
+#'                                    eupop = results_eupop) {
+#'   
+#'   # Start timing
+#'   total_time <- Sys.time()
+#'   initial_mem <- mem_used()
+#'   
+#'   log_message("=== GHS Processing Pipeline Started ===", "info")
+#'   
+#'   # Create output directory if it doesn't exist
+#'   dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+#'   
+#'   # List files and extract years
+#'   ghs_files <- list.files(input_dir, 
+#'                           pattern = "pop_data_eu_\\d{4}\\.tif$",
+#'                           full.names = TRUE)
+#'   
+#'   years <- str_extract(basename(ghs_files), "\\d{4}") %>% as.numeric()
+#'   
+#'   log_message(sprintf("Found %d files to process (%d-%d)", 
+#'                       length(ghs_files), min(years), max(years)), "info")
+#'   
+#'   # Setup parallel processing
+#'   plan(multisession, workers = n_cores)
+#'   log_message(sprintf("Using %d cores for processing", n_cores), "info")
+#'   
+#'   # Process files
+#'   validation_results <- future_map(seq_along(ghs_files), function(i) {
+#'     validate_ghs_file(ghs_files[i], years[i], eupop, target_res, output_dir)
+#'   }, .progress = TRUE)
+#'   
+#'   # Compile results
+#'   validation_summary <- data.table(
+#'     year = years,
+#'     total_pop = sapply(validation_results, function(x) x$basic_checks$total_pop),
+#'     mean_density = sapply(validation_results, function(x) 
+#'       x$basic_checks$total_pop / prod(x$basic_checks$dims[1:2])),
+#'     edge_cells_pct = sapply(validation_results, function(x) x$edge_stats$edge_pct),
+#'     eurostat_diff_pct = sapply(validation_results, function(x) 
+#'       if(!is.null(x$eurostat_check)) x$eurostat_check$diff_pct else NA)
+#'   )
+#'   
+#'   # Final Summary Report
+#'   cat("\n=== Validation Summary ===\n")
+#'   
+#'   # Population trend analysis
+#'   pop_growth <- diff(validation_summary$total_pop)/validation_summary$total_pop[-1]*100
+#'   high_growth_years <- years[-1][abs(pop_growth) > 5]
+#'   
+#'   if(length(high_growth_years) == 0) {
+#'     log_message("Population trends: Consistent growth pattern", "success")
+#'   } else {
+#'     log_message(sprintf("Population trends: Anomalies in years: %s", 
+#'                         paste(high_growth_years, collapse=", ")), "warning")
+#'   }
+#'   
+#'   # Edge effects summary
+#'   mean_edge <- mean(validation_summary$edge_cells_pct, na.rm = TRUE)
+#'   if(mean_edge < 3) {
+#'     log_message("Edge effects: Within acceptable range", "success")
+#'   } else {
+#'     log_message(sprintf("Edge effects: High average (%.1f%%)", mean_edge), "warning")
+#'   }
+#'   
+#'   # Eurostat comparison summary
+#'   eurostat_issues <- validation_summary[abs(eurostat_diff_pct) > 10, year]
+#'   if(length(eurostat_issues) == 0) {
+#'     log_message("Eurostat validation: All comparisons within ±10%", "success")
+#'   } else {
+#'     log_message(sprintf("Eurostat validation: Large differences in years: %s",
+#'                         paste(eurostat_issues, collapse=", ")), "warning")
+#'   }
+#'   
+#'   # Save validation summary
+#'   fwrite(validation_summary, 
+#'          file.path(output_dir, "validation_summary.csv"))
+#'   
+#'   # Create detailed comparison table
+#'   comparison_table <- data.table(
+#'     year = years,
+#'     ghs_population = format_pop(validation_summary$total_pop),
+#'     eurostat_population = sapply(validation_results, function(x) 
+#'       if(!is.null(x$eurostat_check)) format_pop(x$eurostat_check$eurostat_total) else NA),
+#'     absolute_difference = sapply(validation_results, function(x) 
+#'       if(!is.null(x$eurostat_check)) format_pop(x$eurostat_check$diff_abs) else NA),
+#'     percent_difference = sapply(validation_results, function(x) 
+#'       if(!is.null(x$eurostat_check)) sprintf("%.2f%%", x$eurostat_check$diff_pct) else NA),
+#'     countries_covered = sapply(validation_results, function(x) 
+#'       if(!is.null(x$eurostat_check)) x$eurostat_check$countries_covered else NA)
+#'   )
+#'   
+#'   fwrite(comparison_table,
+#'          file.path(output_dir, "eurostat_comparison.csv"))
+#'   
+#'   # Save metadata
+#'   metadata <- list(
+#'     processing_date = Sys.time(),
+#'     input_files = ghs_files,
+#'     output_directory = output_dir,
+#'     years_processed = years,
+#'     resolution = list(
+#'       target = target_res,
+#'       original = sapply(validation_results, function(x) x$basic_checks$orig_res)
+#'     ),
+#'     crs = "EPSG:4326",
+#'     eurostat_validation = TRUE,
+#'     validation_summary = validation_summary,
+#'     processing_time = difftime(Sys.time(), total_time, units = "secs"),
+#'     memory_used = mem_used() - initial_mem
+#'   )
+#'   
+#'   saveRDS(metadata, 
+#'           file.path(output_dir, "processing_metadata.rds"))
+#'   
+#'   # Final timing and memory usage
+#'   total_time <- difftime(Sys.time(), total_time, units = "secs")
+#'   final_mem <- mem_used()
+#'   mem_used <- final_mem - initial_mem
+#'   
+#'   log_message(sprintf("\nProcessing completed in %.1f seconds", total_time), "info")
+#'   log_message(sprintf("Peak memory usage: %.1f GB", mem_used/1e9), "info")
+#'   log_message(sprintf("Output files saved in: %s", normalizePath(output_dir)), "info")
+#'   
+#'   # Print comparison table
+#'   message("\nDetailed Population Comparison:")
+#'   print(comparison_table)
+#'   
+#'   return(list(
+#'     validation = validation_summary,
+#'     comparison = comparison_table,
+#'     processing_time = total_time,
+#'     memory_used = mem_used,
+#'     metadata = metadata
+#'   ))
+#' }
+#' 
+#' results <- process_ghs_timeseries( input_dir = here("Data", "ghs") 
+#'                                   , output_dir = here("Output")
+#'                                   , target_res = 25000             
+#'                                   , n_cores = 12
+#'                                   , eupop = results_eupop # Pop dataset fro validation
+#'                                   )
+#' 
+#' results$validation        # Table with validation metrics
+#' 
+#' validation <- fread(here("Data", "ghs", "validation_summary.csv"))
+#' 
+#' (metadata <- readRDS(here("Data", "ghs", "processing_metadata.rds")))
 
 # [21:37:43] === === GHS Processing Pipeline Started ===
 # [21:37:43] === Found 12 files to process (1975-2030)
@@ -963,48 +960,63 @@ validation <- fread(here("Data", "ghs", "validation_summary.csv"))
 
 # 4. Stack population raster ----
 # Stack relevant years
-pop_stack <- c( terra::rast(here("Data", "ghs", "pop_data_eu_2010.tif"))
+pop_stack <- c( terra::rast(here("Data", "ghs", "pop_data_eu_2005.tif"))
+               ,terra::rast(here("Data", "ghs", "pop_data_eu_2010.tif"))
                ,terra::rast(here("Data", "ghs", "pop_data_eu_2015.tif"))
                ,terra::rast(here("Data", "ghs", "pop_data_eu_2020.tif")) 
+               ,terra::rast(here("Data", "ghs", "pop_data_eu_2025.tif")) 
               )
 orig_crs <- crs(pop_stack)
 
 # Calculate annual arithmetic constant increase, rates show absolute population
 # change per year
-rate_2010_2015 <- (pop_stack[[2]] - pop_stack[[1]]) / 5
-rate_2015_2020 <- (pop_stack[[3]] - pop_stack[[2]]) / 5
+rate_2005_2010 <- (pop_stack[[2]] - pop_stack[[1]]) / 5
+rate_2010_2015 <- (pop_stack[[3]] - pop_stack[[2]]) / 5
+rate_2015_2020 <- (pop_stack[[4]] - pop_stack[[3]]) / 5
+rate_2020_2025 <- (pop_stack[[5]] - pop_stack[[4]]) / 5
 
+summary(rate_2005_2010)
 summary(rate_2010_2015)
 summary(rate_2015_2020)
+summary(rate_2020_2025)
 
 # Interpolate years
-pop_2011 <- pop_stack[[1]] + rate_2010_2015
-pop_2012 <- pop_stack[[1]] + (rate_2010_2015 * 2)
-pop_2013 <- pop_stack[[1]] + (rate_2010_2015 * 3)
-pop_2014 <- pop_stack[[1]] + (rate_2010_2015 * 4)
+pop_2006 <- pop_stack[[1]] + rate_2005_2010
+pop_2007 <- pop_stack[[1]] + (rate_2005_2010 * 2)
+pop_2008 <- pop_stack[[1]] + (rate_2005_2010 * 3)
+pop_2009 <- pop_stack[[1]] + (rate_2005_2010 * 4)
 
-pop_2016 <- pop_stack[[2]] + rate_2015_2020
-pop_2017 <- pop_stack[[2]] + (rate_2015_2020 * 2)
-pop_2018 <- pop_stack[[2]] + (rate_2015_2020 * 3)
-pop_2019 <- pop_stack[[2]] + (rate_2015_2020 * 4)
+pop_2011 <- pop_stack[[2]] + rate_2010_2015
+pop_2012 <- pop_stack[[2]] + (rate_2010_2015 * 2)
+pop_2013 <- pop_stack[[2]] + (rate_2010_2015 * 3)
+pop_2014 <- pop_stack[[2]] + (rate_2010_2015 * 4)
+
+pop_2016 <- pop_stack[[3]] + rate_2015_2020
+pop_2017 <- pop_stack[[3]] + (rate_2015_2020 * 2)
+pop_2018 <- pop_stack[[3]] + (rate_2015_2020 * 3)
+pop_2019 <- pop_stack[[3]] + (rate_2015_2020 * 4)
+
+pop_2021 <- pop_stack[[4]] + rate_2020_2025
+pop_2022 <- pop_stack[[4]] + (rate_2020_2025 * 2)
 
 # Stack results
-pop_raster <- c(pop_stack[[1]], pop_2011, pop_2012, pop_2013, pop_2014,
-                pop_stack[[2]], pop_2016, pop_2017, pop_2018, pop_2019,
-                pop_stack[[3]])
+pop_raster <- c(pop_stack[[1]], pop_2006, pop_2007, pop_2008, pop_2009,
+                pop_stack[[2]], pop_2011, pop_2012, pop_2013, pop_2014,
+                pop_stack[[3]], pop_2016, pop_2017, pop_2018, pop_2019,
+                pop_stack[[4]], pop_2021, pop_2022)
 
 crs(pop_raster) <- orig_crs
-names(pop_raster) <- paste0("pop_", 2010:2020)
+names(pop_raster) <- paste0("pop_", 2005:2022)
 
 terra::writeRaster(pop_raster
-                   , here("Output","pop_raster_2010_2020.tif")
+                   , here("Output","pop_raster_2005_2022.tif")
                    , filetype = "GTiff"
                    , overwrite = TRUE
                    )
 
 # Review 
 # # Extract population values for each year
-# pop_data <- lapply(2010:2020, function(year) {
+# pop_data <- lapply(2005:2020, function(year) {
 #   values_year <- values(pop_raster[[paste0("pop_", year)]])
 #   list(
 #     year = year,
@@ -1024,8 +1036,8 @@ terra::writeRaster(pop_raster
 # 
 # # Check for consistency
 # plot(pop_df$year, pop_df$total_population)
-
-# Plot
+# 
+# # Plot
 # pop_df <- as.data.frame(pop_raster)
 # 
 # pop_long <- pivot_longer(pop_df,
@@ -1041,4 +1053,4 @@ terra::writeRaster(pop_raster
 #   theme_minimal() +
 #   labs(x = "Year",
 #        y = "Population (log scale)",
-#        title = "Population Distribution 2010-2020")
+#        title = "Population Distribution 2005-2020")

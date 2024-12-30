@@ -23,8 +23,9 @@
 
 options(scipen = 100, digits = 4) # Prefer non-scientific notation
 terra::terraOptions(
+  threads = 12,     # Use 12 cores
   memfrac = 0.8,    # Use 80% of available RAM
-  progress = 10    # Show progress bar for operations >10 chunks
+  progress = 10     # Show progress bar for operations >10 chunks
 )
 
 ## Runs the following ----------------------------------------------------------
@@ -32,23 +33,19 @@ terra::terraOptions(
 # # Step 1: Data Preparation
 # # Download and read data
 
-# # Reproject everything to WGS84
-
 # # Step 2: Grid Harmonization
 # # Verify CRS of data
 # # Resample population to climate grid
 
-# # Step 3: Weighting, check if this is necessary
-# # Calculate population weights per grid cell
+# # Step 3: Weighting
+# # Calculate population weights per grid cell, area weights and latitudinal weights
 
 # # Apply weights to climate data
 
 # # Step 4: Regional Aggregation
 # # Convert NUTS to terra vector
-# 
-# # Aggregate to NUTS regions using exact extraction
 
-# # Aggregate output, by layers or different objects
+# # Aggregate to NUTS regions using exact extraction
 
 ## -----------------------------------------------------------------------------
 
@@ -72,9 +69,9 @@ pkgs = c("dplyr", "tidyverse", "janitor", "sf"
          , "prettymapr", "viridis", "labelled"
          , "writexl", "WDI", "wesanderson", "ggrepel"
          , "ggbreak", "nuts", "httr", "jsonlite", "tidyr"
-         ,"progressr", "future", "furrr", "future.apply"
+         ,"progressr", "furrr", "future.apply"
          , "ncdf4", "terra", "tidyterra", "tictoc", "pryr"
-         , "aws.s3"
+         , "aws.s3", "ncmeta"
 )
 
 groundhog.library(pkgs, groundhog.day

@@ -101,34 +101,7 @@ get_climate_data <- function(collection,
     }
   }
   
-  # # Open NetCDF file
-  # nc <- nc_open(local_file)
-  # 
-  # # Get coordinates
-  # lon <- ncvar_get(nc, "lon")
-  # lat <- ncvar_get(nc, "lat")
-  # 
-  # # Read data and preserve metadata
-  # data <- ncvar_get(nc, variable_code)
-  # global_atts <- ncatt_get(nc, 0)
-  # var_atts <- ncatt_get(nc, variable_code)
-  # 
-  # r <- terra::rast(data,
-  #                  crs = "epsg:4326",
-  #                  extent = c(min(lon), max(lon), min(lat), max(lat)))
-  # 
-  # # Attach metadata as attributes
-  # attr(r, "global_attributes") <- global_atts
-  # attr(r, "variable_attributes") <- var_atts
-  # attr(r, "source_file") <- filename
-  # attr(r, "scenario") <- scenario
-  # attr(r, "variable") <- variable_code
-  # 
-  # # Close connection
-  # nc_close(nc)
-  # 
-  # names(r) <- paste(variable_code, scenario, sep="_")
-  # 
+  gc()
   return(local_file)
 }
 
@@ -218,18 +191,50 @@ get_climate_data_batch_parallel <-  function(collection,
                                         product_type, 
                                         time_period,
                                         if(length(variables) == 1) variables[1],
-                                        "combined.nc",
+                                        "combined.tif",
                                         sep="_"))
   
   # Create a combined raster
-  combined_nc <- c(rast(nc_files))
+  # combined_nc <- c(rast(nc_files))
   
-  # Write single file
-  terra::writeCDF(combined_nc
-                    , outfile
-                    , overwrite = TRUE
-                    )
+  # nc_list <- lapply(nc_files, rast)
+  # combined_nc <- do.call(c, nc_list)
   
+  # Process each file to get variable names and create raster
+  rast_list <- lapply(nc_files, function(f) {
+    # Get variable name from metadata
+    meta <- nc_vars(f)
+    var_name <- meta$name[4]
+    
+    # Create raster
+    r <- rast(f)
+    
+    # Get times
+    time_vals <- terra::time(r)
+    
+    # Name layers using variable and times
+    names(r) <- paste(var_name,
+                      format(time_vals, "%Y"),
+                      sep = "_")
+    
+    return(r)
+  })
+  
+  # Combine rasters
+  combined_nc <- do.call(c, rast_list)
+  
+  # # Write single file
+  # terra::writeCDF(combined_nc
+  #                   , outfile
+  #                   , split = TRUE 
+  #                   , overwrite = TRUE
+  #                   )
+  
+  terra::writeRaster(combined_nc
+                  , outfile
+                  , overwrite = TRUE
+                  )
+
   # Cleanup
   unlink(nc_files)
   gc()
