@@ -123,10 +123,22 @@ get_climate_data_batch_parallel <-  function(collection,
     scenarios <- "historical_era5"
     time_period <- time_period %||% "1991-2020"
     
+  } else if (collection == "cmip6-x0.25") {
+    
+    if (product == "climatology") {
+      
+      scenarios <- "historical"
+      time_period <- time_period %||% "1995-2014"
+      
+    } else {
+      
+      scenarios <- scenarios %||% c("ssp245", "ssp585")
+      time_period <- time_period %||% "2040-2059"
+    }
+    
   } else {
     
-    scenarios <- scenarios %||% c("ssp245", "ssp585")
-    time_period <- time_period %||% "2040-2059"
+    stop("Unknown collection type: ", collection)
   }
   
   jobs <- expand.grid(variable = variables,

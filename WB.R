@@ -148,7 +148,7 @@ cmip6_data_a <- get_climate_data_batch_parallel(
 cmip6_data_b <- get_climate_data_batch_parallel(
   collection = "cmip6-x0.25",
   variables = c("r20mm", "r50mm", "pr"),
-  scenarios = c("ssp245", "ssp585"),
+  scenarios = "historical",
   product = "climatology",
   aggregation = "annual", 
   time_period = "1995-2014", # VERIFY!!!!!!!!

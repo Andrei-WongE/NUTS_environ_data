@@ -1,6 +1,8 @@
 ---
 title: "Technical documentation NUTS1&2 level environmental data"
-author: "Andrei Wong Espejo"
+author: 
+ - name: "Andrei Wong Espejo"
+   email: awonge01@student.bbk.ac.uk
 format: docx
 editor: visual
 bibliography: references.bib
@@ -28,29 +30,56 @@ The following code combines ERA5 climate data, population data and NUTS boundari
 
 # Workflow description:
 
-This code creates four climate datasets for EU NUTS regions level 1 and 2. The workflow aggregates 1km population data to 25km climate grid while preserving population totals. The objective is to create a panel series for 2005-2022 with latitudinal and population weighted climate variables and a dataset with future projections. This projections combine historical ERA5 data with CMIP6 anomalies, using different methods for no-precipitation (additive) and precipitation variable (delta method), for each future climate scenario and NUTS region level. Results are exported in vector, RDS and tabular formats.
+This code creates two climate datasets for each EU NUTS regions level 1 and 2. The objective is to create a panel series for 2005-2022 with latitudinal and population weighted climate variables and a dataset with future projections. This projections combines historical ERA5 data with CMIP6 anomalies, using different methods for no-precipitation (additive) and precipitation variable (delta method), for each future climate scenario and NUTS region level. Results are exported in vector, RDS and tabular formats.
 
 To obtain this we need to extract the following data:
 
-era5-x0.25_A: - Panel dataset for 2005-2022 - Ten climate indicators across NUTS regions - Population weighted using GHS data - Three base years (2005/2015/2020) with interpolation
+era5-x0.25_A:
+- Panel dataset for 2005-2022 
+- Ten climate indicators across NUTS regions 
+- Population weighted using GHS data 
+- Three base years (2005/2015/2020) with interpolation for years in between
 
-era5-x0.25_B: - Single baseline value per region - Reference period 1995-2014 - Provides foundation for projections
+era5-x0.25_B: 
+- Single baseline value per region
+- Reference period 1995-2014
+- Provides foundation for projections
 
-cmip6-x0.25_A: - Future projections for 2040-2059 - Two scenarios: SSP245 and SSP585 - Anomalies relative to baseline - Uses scenario-specific populations
+cmip6-x0.25_A:
+- Future projections for 2040-2059
+- Two scenarios: SSP245 and SSP585
+- Anomalies relative to baseline
+- Uses scenario-specific populations
 
-cmip6-x0.25_B: - Historical CMIP6 data 1995-2014 - Used for precipitation projections - Enables relative change calculations
+cmip6-x0.25_B:
+- Historical CMIP6 data 1995-2014 
+- Used for precipitation projections 
+- Enables relative change calculations
 
-pop_x0.25_future and pop_x0.25_future: - Future population projections for 2040-2059 - Two scenarios: SSP245 and SSP585
+pop_x0.25_future and pop_x0.25_future: 
+- Future population projections for 2040-2059 
+- Two scenarios: SSP245 and SSP585
 
 # Obtaining data:
 
 Three main inputs:
 
-GHS Population: 1km resolution population grid in Mollweide projection spanning 1975-2030. Gridded data enables consistent integration, stable cells over time, and custom zone aggregation. GHS (2023) Epochs: c(1975, 1980, 1985, 1990, 1995, 2000, 2005, 2005, 2015, 2020, 2025, 2030) Resolution: 1km Coordinate System: ESPG: 4326
+GHS Population: 
+1km resolution population grid in Mollweide projection spanning 1975-2030. Gridded data enables consistent integration, stable cells over time, and custom zone aggregation.
+  Epochs: 2005, 2015, 2020, 2025
+  Resolution: 1km 
+  Coordinate System: ESPG: 4326
+  Raster
 
-ERA5: High-resolution climate and population data. Resolution: 0.25 by 0.25 degrees Coordinate System: Mollweide
-
-NUTS1/2 (2016): Administrative boundaries defining statistical regions. Resolution: 20M Coordinate System: ESPG: 4326
+ERA5: High-resolution climate and population data. 
+  Resolution: 0.25 by 0.25 degrees
+  Coordinate System: Mollweide
+  Raster
+  
+NUTS1/2 (2016): Administrative boundaries defining statistical regions. 
+  Resolution: 20M 
+  Coordinate System: ESPG: 4326
+  Polygons
 
 # Data cleaning and wrangling principal operations:
 
@@ -58,13 +87,13 @@ The spatial analysis operations to perform are:
 
 -   Aggregation: change of scale of the information, from 1km GHS population grid to 25km ERAS5 grid/cmip6-x0.25 grid. This means the reprojection of population grids maintaining volumes and minimising displacement of population.
 
--   Zonal statistics: Aggregation of rasters by zones, at the NUTS1&2 regions. It is important to weight the summary of grid values by latitudinal and population weighting, other weights can be considered (density, economic activity, etc.).
+-   Zonal statistics: Aggregation of rasters by zones, at the NUTS1&2 regions, to calculate for each unique polygon the proportion of a grid-cell value within a nuts region. It is important to weight the summary of grid values by latitudinal and population weighting, other weights can be considered (density, economic activity, etc.).
 
-\_ Masking and cropping: One critical aspect of population grids is that they represent a given spatial distribution and volume of people (i.e. total number of persons) for the area being represented. When the boundaries intersect grids masking zeroes out values outside of the area of interest and cropping cuts the extent of the area.
+_ Masking and cropping: One critical aspect of population grids is that they represent a given spatial distribution and volume of people (i.e. total number of persons) for the area being represented. When the boundaries intersect grids masking zeroes out values outside of the area of interest and cropping cuts the extent of the area.
 
-The has taken into consideration that latitudinal weighting and area weighting are proportional, see \@
+The has taken into consideration that latitudinal weighting and area weighting are proportional, see @wei2022comparison
 
-Finally, wile doing the spatial aggregation, we need to decide whether we want to transform the data first and then aggregate it (transformation-before-aggregation) or aggregate it and then transform it (aggregation-before-transformation). It matters what variable is under consideration. For example, doing aggregation-before-transformation for temperature will distort the signal less than doing it for precipitation. This is because precipitation is highly local both temporally and spatially (it could rain for \<1 min in \<1 km radius area). As indicated by
+Finally, wile doing the spatial aggregation, we need to decide whether we want to transform the data first and then aggregate it (transformation-before-aggregation) or aggregate it and then transform it (aggregation-before-transformation). It matters what variable is under consideration. For example, doing aggregation-before-transformation for temperature will distort the signal less than doing it for precipitation. This is because precipitation is highly local both temporally and spatially (it could rain for \<1 min in \<1 km radius area). As indicated by @rising2020weather
 
 # Data analysis and verification
 
@@ -72,27 +101,39 @@ Finally, wile doing the spatial aggregation, we need to decide whether we want t
 
 The code snippets generate the following:
 
-era5-x0.25_A Panel dataset 2005-2022 with population-weighted climate variables. Uses GHS population for 2005, 2015, 2020 with linear interpolation between years. Processes 10 climate indicators including temperature, precipitation and extreme events.
+era5-x0.25_A 
+Panel dataset 2005-2022 with population-weighted climate variables. Uses GHS population for 2005, 2015, 2020 with linear interpolation between years. Processes 10 climate indicators including temperature, precipitation and extreme events.
 
-era5-x0.25_B Single value per region for 1995-2014 baseline period. Creates foundation for future projections. cmip6-x0.25_A
+era5-x0.25_B 
+Single value per region for 1995-2014 baseline period. Creates foundation for future projections.
 
+cmip6-x0.25_A
 Anomalies for 2040-2059 under two scenarios:
+SSP245 (moderate climate change) 
+SSP585 (severe climate change)
 
-SSP245 (moderate climate change) SSP585 (severe climate change)
-
-cmip6-x0.25_B CMIP6 historical data (1995-2014) used for relative precipitation changes.
+cmip6-x0.25_B 
+CMIP6 historical data (1995-2014) used for relative precipitation changes.
 
 Future climate calculated:
 
-Temperature variables: ERA5 historical + CMIP6 anomaly Precipitation: ERA5 historical \* (1 + relative change) Population weighted using scenario-specific projection
+Temperature variables: ERA5 historical + CMIP6 anomaly
+Precipitation: ERA5 historical \* (1 + relative change) Population weighted using scenario-specific projection
 
 ## era5-x0.25_A:
 
-ERA5 data is provided at 0.25 x 0.25-degree resolution globally. This indicates it uses a regular latitude/longitude grid (WGS84/EPSG:4326).The 0.25-degree resolution means equal longitude spacing but decreasing latitude spacing towards poles
+ERA5 data is provided at 0.25 x 0.25-degree resolution globally. This indicates it uses a regular latitude/longitude grid (WGS84/EPSG:4326).The 0.25-degree resolution means equal longitude spacing but decreasing latitude spacing towards poles.
 
 Panel with waves 2005-2022 for each NUTS1/NUTS2 region. Use population weights to aggregate the climate gridcell level data. The population data comes from GHS data using as base the years of 2005, 2015 and 2020. A linear arithmetic extrapolation is used to create years between the base years.
 
-Population-weighted variable is produced by multiplying the value of the varaiable in a given cell with the population in the same cell, summing over the area, and the dividing by the total population in that area.
+Population-weighted variable is produced by multiplying the value of the variable in a given cell with the population in the same cell, summing over the area, and the dividing by the total population in that area. Each step preserves spatial relationships while accounting for cell area variations by latitude.This implements weighted mean as: Σ(value × lat_weight × pop_weight) / Σ(lat_weight × pop_weight).
+
+The resample function is used as it transfers values between SpatRaster objects that do not align (have a different origin and/or resolution).The method parameter is "near" and not ""bilinear" because of the following reasons:
+
+- population data in grid cells represents discontinued values
+- boundary effects
+
+ Each cell in the new raster is assigned the value of the nearest cell (center to center) in the original raster. While with bilinear resampling, the output raster is “smoothed”, containing new values which are averages of (some of) the values in the original raster, not the total population count.
 
 The API query function was parametrized with the following values:
 
@@ -109,12 +150,15 @@ The API query function was parametrized with the following values:
 | Days with Precipitation \>50mm | r50mm | timeseries | historical_era5 | annual | Ensemble_all | 1950-2022 | timeseries |
 | Precipitation | pr | timeseries | historical_era5 | annual | Ensemble_all | 1950-2022 | timeseries |
 
-Each step preserves spatial relationships while accounting for cell area variations by latitude.
 
-This implements weighted mean as: Σ(value × lat_weight × pop_weight) / Σ(lat_weight × pop_weight)
+Hence the following code process ERA5 data to NUTS regions: 
 
-Hence the following code process ERA5 data to NUTS regions: 1. Load and prepare spatial data 2. Crop ERA5 and population raster to match NUTS extent\
-3. Resample population to ERA5 resolution 4. Create parallel processing function for each year 5. Compute population weighted means by NUTS region 6. Save results as GeoPackage and RDS files
+1. Load and prepare spatial data
+2. Crop ERA5 and population raster to match NUTS extent
+3. Resample population to ERA5 resolution 
+4. Create parallel processing function for each year 
+5. Compute population weighted means by NUTS region
+6. Save results as GeoPackage and RDS files
 
 ```{r era5_data_a}
 #| echo: false
@@ -337,7 +381,7 @@ Now we consider for each scenario the following:
 
 Because climate simulations do not reproduce observed high-frequency weather extremes, and may exhibit biases relative to current climate, we do not directly compare simulated future exposures against their observed counterparts, but instead employ the 'delta' change method of computing differences in exposure between simulated current and future climates. Namely:
 
-![](Figures/download.png){.preview-image width="674" height="253"} 
+![](Figures/download.png){.preview-image width="674" height="253"}
 
 ![](Figures/download1.png){.preview-image width="674" height="253"}
 
@@ -369,7 +413,7 @@ era5_historic_panel <- terra::rast(here("Output","climate_data_era5-x0.25_histor
 crs(era5_historic_panel) <- "EPSG:4326"
 
 ## Collection cmip6-xO.25 _B: 1995-2014
-cmip6_historic <- terra::rast(here("Output", "climate_data_era5-x0.25_historical_era5_climatology_1995-2014__combined.tif"))
+cmip6_historic <- terra::rast(here("Output", "climate_data_cmip6-x0.25_historical_climatology_1995-2014__combined.tif"))
 crs(cmip6_historic) <- "EPSG:4326"
 
 ## Collection cmip6-xO.25 _A: 2040-2059
