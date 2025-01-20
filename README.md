@@ -1,4 +1,4 @@
-In this project I combine ERA5 climate data at 0.25º x 0.25º resolution, raster population data from two different sources and resolutions and, NUTS boundaries to create climate indicators at nuts1 and nuts2 region level.
+In this project I combine ERA5 climate data at 0.25º x 0.25º resolution, raster population data from two different sources and resolutions and, NUTS boundaries to create climate indicators at nuts1 and nuts2 region level for a LSE research project.
 
 # Workflow description:
 This code creates two climate datasets for each EU NUTS regions level 1 and 2. The objective is to create a panel series for 2005-2022 with latitudinal and population weighted climate variables and a dataset with future climate projections, population weighted.
@@ -53,3 +53,5 @@ NUTS1/2 (2016): Administrative boundaries defining statistical regions.
   Resolution: 20M 
   Coordinate System: ESPG: 4326
   Polygons
+  
+  See main_doc for detailed explanation of code.
